@@ -158,3 +158,10 @@ The Basic Memory 0.23.0 engine commissioning passed a claim-body revision while
 preserving the original event snapshot. The adapter regression also covers repeated
 metadata text, plain Markdown, CRLF framing, and rejection of ambiguous body matches.
 Body edits perform one additional full-Markdown read before the guarded native edit.
+
+## Version 0.5.1
+
+PR #3 passed all six Windows/Linux CI jobs (run 34585749834), including native
+Basic Memory 0.23.0 acceptance. A separate native engine check confirmed that
+claim correction preserves the original history event. All 57 tests passed
+with the installed 0.5.1 package.
