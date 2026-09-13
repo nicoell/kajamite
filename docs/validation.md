@@ -165,3 +165,36 @@ PR #3 passed all six Windows/Linux CI jobs (run 34585749834), including native
 Basic Memory 0.23.0 acceptance. A separate native engine check confirmed that
 claim correction preserves the original history event. All 57 tests passed
 with the installed 0.5.1 package.
+
+## Editorial composition and maintenance
+
+Working-tree verification on 2026-09-13 used the pinned Kajamite interpreter
+with `PYTHONPATH=src`. The full source/protocol suite passed 66 tests. It covers
+the shared Python, CLI, and MCP operation catalog; byte-identical packaged skill
+copies; the CLI `skill` output; the MCP guide resource; existing `knowledge_edit`
+compatibility; generic/governed separation; grouped revision preview, stale-hash,
+readback, receipt, and text-fallback behavior; and bounded collection inspection.
+Inspection cases cover scope/recursion/page-size cursor binding, incomplete empty
+pages, exact duplicates as page-scoped candidates, and governed or unauthorized
+omissions. A synthetic two-note walkthrough injects the second write's uncertain
+failure, rereads its source hash, and resumes only the still-valid outstanding
+revision.
+
+The working tree was also built and installed into a disposable virtual
+environment with the hashed dependency lock. Its packaged guide matched the
+source guide byte-for-byte, and all 66 tests passed against the installed wheel.
+
+The complete isolated commission entrypoint then passed against Basic Memory
+0.23.0. Its ordinary-note scenario exercised grouped revision, its receipt and
+text fallback, bounded collection inspection, existing edit/move behavior, and
+native full-text continuation. The capability and governed-engine scenarios also
+passed. All state was synthetic and temporary. This establishes backend operation
+behavior, not editorial usefulness or compatibility with every future Basic
+Memory release.
+
+The editorial design is source-informed by inspected upstream mechanisms and
+historical failure reports. Deterministic tests establish operation mechanics,
+not that prose is readable, correctly scoped, or useful. The documentation was
+reviewed for coherent purpose, boundaries, useful-detail preservation, and
+honest limitations; that is human editorial judgment, not a universal score or
+usability study.

@@ -54,7 +54,7 @@ def main():
     call.add_argument("--arguments", help="Path to a JSON object of operation arguments")
     args = parser.parse_args()
     if args.command == "skill":
-        print(guide())
+        sys.stdout.write(guide())
         return 0
     if not args.config:
         parser.error("--config or KAJAMITE_CONFIG is required")

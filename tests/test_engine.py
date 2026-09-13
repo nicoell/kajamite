@@ -1,6 +1,7 @@
 """Synthetic acceptance coverage for persistent governed record operations."""
 import asyncio
 import copy
+import hashlib
 from pathlib import Path
 import sys
 import unittest
@@ -95,6 +96,32 @@ class KnowledgeEngineTests(unittest.IsolatedAsyncioTestCase):
             await self.engine.create("Bad", "body", "personal", kind="governed-record")
         with self.assertRaisesRegex(ValueError, "governed"):
             await self.engine.create("Bad", "body", "personal", metadata={"kajamite_record": {}})
+
+    async def test_revise_authorizes_plain_notes_and_rejects_governed_records(self):
+        ordinary = await self.engine.create("Draft", "old and stable", "facts")
+        identifier = ordinary["note"]["identifier"]
+        changed = await self.engine.revise(
+            identifier, hashlib.sha256(b"old and stable").hexdigest(),
+            [{"find_text": "old", "replacement": "new"}],
+        )
+        self.assertEqual("new and stable", changed["note"]["content"])
+        governed = await self.engine.record_create("facts", source_record())
+        with self.assertRaisesRegex(KnowledgeError, "lifecycle transition"):
+            await self.engine.revise(
+                governed["identifier"], "0" * 64,
+                [{"find_text": "synthetic", "replacement": "changed"}],
+            )
+
+    async def test_collection_inspection_omits_governed_and_unauthorized_notes(self):
+        allowed = await self.engine.create("Allowed", "ordinary", "facts")
+        await self.engine.create("Denied", "ordinary", "facts")
+        await self.engine.record_create("facts", source_record())
+        self.engine.authorize = lambda identifier, scope: not identifier.endswith("denied.md")
+        result = await self.engine.inspect_collection("facts")
+        self.assertEqual([allowed["note"]["identifier"]], [note["identifier"] for note in result["notes"]])
+        reasons = [item["reason"] for item in result["omissions"]]
+        self.assertIn("access_denied", reasons)
+        self.assertIn("governed_record", reasons)
 
     async def test_evidence_health_noop_is_explicit_without_a_write(self):
         created = await self.engine.record_create("facts", source_record())

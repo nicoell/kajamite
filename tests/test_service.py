@@ -1,5 +1,6 @@
 import asyncio
 import copy
+import hashlib
 from contextlib import asynccontextmanager
 from pathlib import Path
 import sys
@@ -22,6 +23,8 @@ class FakeBackend:
         self.fail_move = False
         self.fuzzy = None
         self.directory_destination = None
+        self.corrupt_edit = False
+        self.fail_next_edit = False
 
     @asynccontextmanager
     async def mutation(self):
@@ -42,6 +45,9 @@ class FakeBackend:
         if name == "read_note":
             return copy.deepcopy(self.fuzzy or self._lookup(arguments["identifier"]))
         if name == "edit_note":
+            if self.fail_next_edit:
+                self.fail_next_edit = False
+                raise BackendError("synthetic interrupted edit")
             note = self._lookup(arguments["identifier"])
             if arguments["operation"] == "find_replace":
                 find = arguments["find_text"]
@@ -51,6 +57,8 @@ class FakeBackend:
             else:
                 note["content"] += arguments["content"]
             note["frontmatter"].update(arguments.get("metadata") or {})
+            if self.corrupt_edit:
+                note["content"] = "corrupt readback"
             return {"file_path": note["file_path"], "permalink": note["permalink"]}
         if name == "search_notes":
             rows = list(self.search_rows if self.search_rows is not None else self.notes.values())
@@ -178,6 +186,141 @@ class KnowledgeServiceTests(unittest.IsolatedAsyncioTestCase):
         self.backend.notes[identifier]["content"] = "same same"
         with self.assertRaisesRegex(KnowledgeError, "exactly once"):
             await self.service.edit(identifier, "same", "x")
+
+    async def test_revise_preserves_unselected_markdown_and_guards_every_selection(self):
+        body = (
+            "# Plan\n\n## Repeated\nalpha beta gamma\n\n"
+            "Name  Score\nAda   8\n\n```text\nkeep --literal\n```\n\n"
+            "## Repeated\nÜnicode stays.\n"
+        )
+        created = await self.service.create("Revision", body, "notes", metadata={"keep": True})
+        identifier = created["note"]["identifier"]
+        read = await self.service.read(identifier, limit=8)
+        self.assertTrue(read["truncated"])
+        self.assertEqual(hashlib.sha256(body.encode("utf-8")).hexdigest(), read["content_sha256"])
+        context = await self.service.context(identifiers=[identifier], max_chars=8)
+        self.assertEqual(read["content_sha256"], context["notes"][0]["content_sha256"])
+        replacements = [
+            {"find_text": "alpha beta gamma", "replacement": "alpha delta gamma"},
+            {"find_text": "Ada   8", "replacement": "Ada   9"},
+        ]
+        preview = await self.service.revise(identifier, read["content_sha256"], replacements, preview=True)
+        self.assertTrue(preview["preview"])
+        self.assertNotIn("knowledge_change", preview)
+        self.assertEqual(body, self.backend.notes[identifier]["content"])
+        applied = await self.service.revise(identifier, read["content_sha256"], replacements)
+        expected = body.replace("alpha beta gamma", "alpha delta gamma").replace("Ada   8", "Ada   9")
+        self.assertEqual(expected, applied["note"]["content"])
+        self.assertIn("```text\nkeep --literal\n```", applied["note"]["content"])
+        self.assertIn("## Repeated\nÜnicode stays.", applied["note"]["content"])
+        change = applied["knowledge_change"]
+        self.assertEqual("revise", change["operation"])
+        self.assertEqual("grouped_exact_replacement", change["body_change"]["kind"])
+        self.assertEqual(2, len(change["body_change"]["replacements"]))
+        self.assertIn("Replacement 1 previous value", applied["knowledge_change_text"])
+        self.assertEqual({"keep": True, "title": "Revision", "type": "note"}, applied["note"]["metadata"])
+
+        writes = len([call for call in self.backend.calls if call[0] == "edit_note"])
+        with self.assertRaisesRegex(KnowledgeError, "overlap"):
+            await self.service.revise(identifier, applied["note"]["content_sha256"], [
+                {"find_text": "alpha delta", "replacement": "one"},
+                {"find_text": "delta gamma", "replacement": "two"},
+            ])
+        with self.assertRaisesRegex(KnowledgeError, "exactly once"):
+            await self.service.revise(identifier, applied["note"]["content_sha256"], [
+                {"find_text": "## Repeated", "replacement": "## Changed"},
+            ])
+        with self.assertRaisesRegex(ValueError, "between 1 and 100"):
+            await self.service.revise(identifier, applied["note"]["content_sha256"], [
+                {"find_text": "alpha", "replacement": "beta"}
+            ] * 101)
+        self.assertEqual(writes, len([call for call in self.backend.calls if call[0] == "edit_note"]))
+
+        current_hash = applied["note"]["content_sha256"]
+        stale_preview = await self.service.revise(identifier, current_hash, [
+            {"find_text": "Ünicode", "replacement": "Unicode"},
+        ], preview=True)
+        self.assertTrue(stale_preview["preview"])
+        self.backend.notes[identifier]["content"] += "changed elsewhere\n"
+        with self.assertRaisesRegex(KnowledgeError, "revision conflict"):
+            await self.service.revise(identifier, current_hash, [{"find_text": "Ünicode", "replacement": "Unicode"}])
+        self.assertEqual(writes, len([call for call in self.backend.calls if call[0] == "edit_note"]))
+
+    async def test_revise_allows_no_change_and_reports_uncertain_readback(self):
+        created = await self.service.create("No change", "keep Ω", "notes")
+        identifier = created["note"]["identifier"]
+        current = await self.service.read(identifier)
+        unchanged = await self.service.revise(identifier, current["content_sha256"], [
+            {"find_text": "keep Ω", "replacement": "keep Ω"},
+        ])
+        self.assertEqual(unchanged["knowledge_change"]["before"]["content_sha256"], unchanged["knowledge_change"]["after"]["content_sha256"])
+        self.backend.corrupt_edit = True
+        current = await self.service.read(identifier)
+        with self.assertRaisesRegex(BackendError, "write may have committed"):
+            await self.service.revise(identifier, current["content_sha256"], [
+                {"find_text": "keep Ω", "replacement": "updated Ω"},
+            ])
+        self.assertEqual("corrupt readback", self.backend.notes[identifier]["content"])
+
+    async def test_inspect_collection_is_bounded_and_reports_page_scoped_duplicates(self):
+        first = await self.service.create("First", "same body", "collection")
+        second = await self.service.create("Second", "same body", "collection")
+        await self.service.create("Third", "other body", "collection")
+        page = await self.service.inspect_collection("collection", page_size=2)
+        self.assertFalse(page["exhausted"])
+        self.assertTrue(page["has_more"])
+        self.assertEqual(2, len(page["notes"]))
+        self.assertEqual({first["note"]["identifier"], second["note"]["identifier"]},
+                         set(page["candidates"][0]["identifiers"]))
+        self.assertEqual("exact_duplicate", page["candidates"][0]["kind"])
+        self.assertEqual("returned_page", page["candidates"][0]["scope"])
+        self.assertTrue(all(len(note["content_sha256"]) == 64 for note in page["notes"]))
+        with self.assertRaisesRegex(ValueError, "another collection inspection"):
+            await self.service.inspect_collection("other", page_size=2, cursor=page["next_cursor"])
+        with self.assertRaisesRegex(ValueError, "another collection inspection"):
+            await self.service.inspect_collection("collection", page_size=1, cursor=page["next_cursor"])
+        with self.assertRaisesRegex(ValueError, "another collection inspection"):
+            await self.service.inspect_collection("collection", recursive=False, page_size=2,
+                                                  cursor=page["next_cursor"])
+        with self.assertRaisesRegex(ValueError, "invalid"):
+            await self.service.inspect_collection("collection", cursor="a")
+        final = await self.service.inspect_collection("collection", page_size=2, cursor=page["next_cursor"])
+        self.assertTrue(final["exhausted"])
+        self.assertFalse(final["candidates"])
+
+    async def test_inspect_collection_keeps_incomplete_empty_pages_honest(self):
+        self.backend.search_rows = [FakeBackend._note(f"outside/{index}.md", str(index), "body")
+                                    for index in range(260)]
+        last = FakeBackend._note("wanted/last.md", "Last", "body")
+        self.backend.search_rows.append(last)
+        self.backend.notes["wanted/last.md"] = last
+        first = await self.service.inspect_collection("wanted", page_size=5)
+        self.assertEqual([], first["notes"])
+        self.assertTrue(first["has_more"])
+        self.assertFalse(first["exhausted"])
+        self.assertTrue(first["partial"])
+        later = await self.service.inspect_collection("wanted", page_size=5, cursor=first["next_cursor"])
+        self.assertEqual(["wanted/last.md"], [note["identifier"] for note in later["notes"]])
+
+    async def test_consolidation_walkthrough_rereads_after_second_write_failure(self):
+        target = await self.service.create("Canonical", "rule: original", "collection")
+        source = await self.service.create("Duplicate", "rule: original", "collection")
+        inventory = await self.service.inspect_collection("collection")
+        expected = {note["identifier"]: note["content_sha256"] for note in inventory["notes"]}
+        await self.service.revise(target["note"]["identifier"], expected[target["note"]["identifier"]], [
+            {"find_text": "original", "replacement": "current"},
+        ])
+        self.backend.fail_next_edit = True
+        with self.assertRaisesRegex(BackendError, "write may have committed"):
+            await self.service.revise(source["note"]["identifier"], expected[source["note"]["identifier"]], [
+                {"find_text": "rule: original", "replacement": "See Canonical."},
+            ])
+        reread = await self.service.read(source["note"]["identifier"])
+        self.assertEqual(expected[source["note"]["identifier"]], reread["content_sha256"])
+        resumed = await self.service.revise(source["note"]["identifier"], reread["content_sha256"], [
+            {"find_text": "rule: original", "replacement": "See Canonical."},
+        ])
+        self.assertEqual("See Canonical.", resumed["note"]["content"])
 
     async def test_native_list_preserves_namespace_nodes_and_arguments(self):
         await self.service.create("One", "body", "foo")

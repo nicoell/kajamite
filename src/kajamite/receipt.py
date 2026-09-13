@@ -131,6 +131,25 @@ def for_edit(
     )
 
 
+def for_revise(
+    before: dict[str, Any], after: dict[str, Any], replacements: list[dict[str, str]],
+) -> dict[str, Any]:
+    return _base(
+        "revise", before, after,
+        body_change={
+            "kind": "grouped_exact_replacement",
+            "replacements": [
+                {"before": _value(item["find_text"]), "after": _value(item["replacement"])}
+                for item in replacements
+            ],
+        },
+        metadata_changes=[],
+        affected_notes=1,
+        affected_notes_exact=True,
+        verification="readback_verified",
+    )
+
+
 def for_note_move(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
     return _base(
         "move_note", before, after,
@@ -175,8 +194,17 @@ def render(receipt: dict[str, Any]) -> str:
     lines.append(f"Affected notes: {count if count is not None else 'not reported'}")
     body = receipt.get("body_change")
     if body:
-        for label, key in (("Previous value", "before"), ("Current value", "after")):
-            evidence = body.get(key)
+        values = [("Previous value", "before", body.get("before")), ("Current value", "after", body.get("after"))]
+        if body.get("kind") == "grouped_exact_replacement":
+            values = [
+                value
+                for index, item in enumerate(body["replacements"])
+                for value in (
+                    (f"Replacement {index + 1} previous value", "before", item["before"]),
+                    (f"Replacement {index + 1} current value", "after", item["after"]),
+                )
+            ]
+        for label, _, evidence in values:
             if evidence is None:
                 lines.append(f"{label}: none")
             else:

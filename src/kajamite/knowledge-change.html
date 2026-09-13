@@ -68,8 +68,15 @@
         const body = receipt.body_change;
         byId('body-section').hidden = !body;
         if (body) {
-          byId('body-before').textContent = readable(body.before);
-          byId('body-after').textContent = readable(body.after);
+          if (body.kind === 'grouped_exact_replacement') {
+            byId('body-before').textContent = body.replacements.map((item, index) =>
+              `Replacement ${index + 1}:\n${readable(item.before)}`).join('\n\n');
+            byId('body-after').textContent = body.replacements.map((item, index) =>
+              `Replacement ${index + 1}:\n${readable(item.after)}`).join('\n\n');
+          } else {
+            byId('body-before').textContent = readable(body.before);
+            byId('body-after').textContent = readable(body.after);
+          }
         }
         const metadata = receipt.metadata_changes ?? [];
         byId('metadata-section').hidden = metadata.length === 0;
