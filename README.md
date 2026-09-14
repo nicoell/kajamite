@@ -246,3 +246,11 @@ Inspection remains available. Consumers can construct the engine with their own 
 `knowledge_related` discovers native graph neighbors within explicit namespaces.
 For configured semantic retrieval, set `backend.semantic_search=true` and select `retrieval_mode="semantic"` or `"hybrid"`.
 Kajamite does not configure or download an embedding model.
+
+## Compact change feedback
+
+Mutation results include a compact read-only card on compatible MCP Apps hosts.
+Select **View changes** for previous/current values and optional technical evidence.
+The card requests fullscreen when supported and otherwise opens details inline.
+Maintenance, preview, replay, partial completion, and failure have distinct states.
+See [change presentation](docs/change-presentation.md) for coverage and host limits.

@@ -204,3 +204,19 @@ Its result covers storage and bounded active-index evidence, not backups or exte
 Use item_types=["observation"] and categories to retrieve specific native observations.
 Use knowledge_related for explicit bounded graph context across the selected namespaces.
 Relations aid navigation. Only explicit record dependencies govern invalidation.
+
+## Report outcomes briefly
+
+Lead with the useful outcome and the number of changed notes.
+Summarize the substantive change in one short sentence.
+Keep note counts separate from changed passages and metadata fields.
+Do not repeat complete receipt values or hashes in the conversation.
+Offer those details when the user asks to inspect them.
+The read-only card provides a compact summary and optional change details.
+Without a card, use the same brief summary from the structured tool result.
+
+Distinguish preview, no content changes, replay, partial completion, and failure.
+A replay does not represent a new write.
+Report known completed items and unresolved errors separately.
+After an uncertain write, inspect current state before retrying.
+Receipts cover their operations only, not every action in a conversation.

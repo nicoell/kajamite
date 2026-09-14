@@ -198,3 +198,22 @@ not that prose is readable, correctly scoped, or useful. The documentation was
 reviewed for coherent purpose, boundaries, useful-detail preservation, and
 honest limitations; that is human editorial judgment, not a universal score or
 usability study.
+
+## Kajamite 0.6.0 review validation
+
+The adapted editorial change passed 68 source tests, including real Chromium
+acceptance with a simulated MCP Apps host. The UI checks cover compact initial
+layout, incremental disclosure, display-mode negotiation, refusal, timeout,
+resize notifications, narrow width, inert source text, and operation states.
+The compact and expanded synthetic layouts were also visually inspected.
+These checks do not establish rendering in an actual Codex or ChatGPT account.
+
+Revision regression coverage rejects overlapping occurrences of one selection
+before either preview or mutation. Maintenance now exposes its receipt UI.
+The Python dependency set is unchanged, and the updated package lock passes
+`uv lock --check --offline`.
+
+A native commissioning attempt passed the mutation and grouped-revision checks
+but failed the existing large-search continuation assertion. The second page
+returned no scoped target. Investigation retains an isolated synthetic corpus
+on a subsequent run. This failure is unresolved at this review checkpoint.

@@ -247,7 +247,7 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
                 tool.name: tool.model_dump(mode="json", by_alias=True)
                 for tool in listed.tools
             }
-            for name in ("knowledge_create", "knowledge_edit", "knowledge_revise", "knowledge_move"):
+            for name in ("knowledge_create", "knowledge_edit", "knowledge_revise", "knowledge_move", "knowledge_record_maintain"):
                 self.assertEqual(RESOURCE_URI, tools[name]["_meta"]["ui"]["resourceUri"])
             self.assertIsNone(tools["knowledge_read"]["_meta"])
 

@@ -304,7 +304,7 @@ class NoteOperations:
                 start = body.find(item["find_text"])
                 if start < 0:
                     raise KnowledgeError("replacement find_text is missing from the current note body")
-                if body.count(item["find_text"]) != 1:
+                if body.find(item["find_text"], start + 1) != -1:
                     raise KnowledgeError("replacement find_text must occur exactly once in the current note body")
                 selections.append((start, start + len(item["find_text"]), index, item))
             selections.sort()

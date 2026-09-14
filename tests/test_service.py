@@ -246,6 +246,18 @@ class KnowledgeServiceTests(unittest.IsolatedAsyncioTestCase):
             await self.service.revise(identifier, current_hash, [{"find_text": "Ünicode", "replacement": "Unicode"}])
         self.assertEqual(writes, len([call for call in self.backend.calls if call[0] == "edit_note"]))
 
+    async def test_revise_rejects_overlapping_occurrences_of_one_selection(self):
+        created = await self.service.create("Ambiguous", "aaa", "notes")
+        identifier = created["note"]["identifier"]
+        current = await self.service.read(identifier)
+        for preview in (True, False):
+            with self.assertRaisesRegex(KnowledgeError, "exactly once"):
+                await self.service.revise(identifier, current["content_sha256"], [
+                    {"find_text": "aa", "replacement": "b"},
+                ], preview=preview)
+        self.assertFalse(any(name == "edit_note" for name, _ in self.backend.calls))
+        self.assertEqual("aaa", self.backend.notes[identifier]["content"])
+
     async def test_revise_allows_no_change_and_reports_uncertain_readback(self):
         created = await self.service.create("No change", "keep Ω", "notes")
         identifier = created["note"]["identifier"]
