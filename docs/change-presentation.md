@@ -38,3 +38,10 @@ Set `KAJAMITE_BROWSER` to an existing Chromium or Chromium headless-shell execut
 Run `PYTHONPATH=src python -m unittest discover -s tests -p test_ui.py -v`.
 The test uses synthetic notes and a temporary host page.
 It does not install a browser or change the configured knowledge base.
+
+## Configurable shadcn presentation
+
+The React UI composes shadcn controls and keeps the same read-only receipt contract.
+Adopters configure local light/dark theme tokens without building frontend assets.
+See [UI theming](ui-theming.md). The package includes its UI bundle and license notices;
+Python package builds check their source manifest without invoking Node.

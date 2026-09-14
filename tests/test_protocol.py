@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from html.parser import HTMLParser
 from contextlib import AsyncExitStack
 from functools import wraps
 import os
@@ -18,7 +19,7 @@ from kajamite import receipt
 from kajamite.errors import MutationUncertain
 from kajamite.server import INSTRUCTIONS, OPERATIONS, create_server
 from kajamite.ui import RESOURCE_URI
-from kajamite.ui import html
+from kajamite.ui import html, resource_uri
 
 
 SOURCE_ROOT = str(Path(__file__).resolve().parents[1] / "src")
@@ -97,8 +98,10 @@ async def _serve():
             return invoke
         options = dict(name="Embedding host", version="1", instructions="Host instructions",
                        wrap_operation=wrap_operation)
+    if "--themed" in sys.argv:
+        options["ui_theme"] = {"light": {"primary": "#123456"}}
     server = create_server(ProtocolService(), **options)
-    if options:
+    if "--embedded" in sys.argv:
         @server.tool()
         def host_status() -> str:
             return "ready"
@@ -224,6 +227,27 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(failed.is_error)
             self.assertNotIn("synthetic service failure", str(failed.content))
 
+    async def test_adopter_theme_is_on_resource_not_tool_results(self):
+        parameters = StdioServerParameters(
+            command=sys.executable,
+            args=[str(Path(__file__).resolve()), "--serve", "--themed"],
+            env=os.environ | {"PYTHONPATH": SOURCE_ROOT},
+        )
+        async with AsyncExitStack() as stack:
+            errors = stack.enter_context(open(os.devnull, "w"))
+            read, write = await stack.enter_async_context(stdio_client(parameters, errlog=errors))
+            session = await stack.enter_async_context(ClientSession(read, write))
+            await session.initialize()
+            theme_uri = resource_uri({"light": {"primary": "#123456"}})
+            tools = {tool.name: tool for tool in (await session.list_tools()).tools}
+            self.assertEqual(theme_uri, tools["knowledge_create"].meta["ui"]["resourceUri"])
+            resource = await session.read_resource(theme_uri)
+            self.assertIn('#123456', resource.contents[0].text)
+            result = await session.call_tool("knowledge_create", {
+                "title": "Example", "content": "Synthetic", "namespace": "Demo"})
+            self.assertNotIn('#123456', str(result))
+            self.assertNotIn('ui_theme', str(result))
+
     async def test_mutations_advertise_read_only_apps_card_with_plain_fallback(self):
         parameters = StdioServerParameters(
             command=sys.executable,
@@ -260,8 +284,14 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
             wire = loaded.model_dump(mode="json", by_alias=True)["contents"][0]
             self.assertEqual(APP_MIME_TYPE, wire["mimeType"])
             self.assertIn("ui/notifications/tool-result", wire["text"])
-            self.assertNotIn("https://", wire["text"])
-            self.assertNotIn("http://", wire["text"])
+            class Resources(HTMLParser):
+                external = []
+                def handle_starttag(self, tag, attrs):
+                    if tag in {"script", "link", "img", "iframe"}:
+                        self.external.extend((k, v) for k, v in attrs if k in {"src", "href"})
+            resource_parser = Resources()
+            resource_parser.feed(wire["text"])
+            self.assertEqual([], resource_parser.external)
 
             result = await session.call_tool("knowledge_create", {
                 "title": "Example", "content": "stored value", "namespace": "Synthetic"

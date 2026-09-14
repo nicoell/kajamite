@@ -9,7 +9,7 @@ from mcp.types import ToolAnnotations
 from . import __version__
 from .errors import BackendError, MutationUncertain
 from .service import KnowledgeError
-from .ui import RESOURCE_URI, html
+from .ui import html, resource_uri
 
 
 INSTRUCTIONS = """Access shared Markdown knowledge through explicit namespaces.
@@ -51,8 +51,11 @@ def _operation(method):
 
 
 def create_server(service, *, name="Kajamite", version=__version__,
-                  instructions=INSTRUCTIONS, wrap_operation=None):
+                  instructions=INSTRUCTIONS, wrap_operation=None, ui_theme=None):
     """Build the shared knowledge frontend; hosts can add their own tools.
+
+    ``ui_theme`` accepts validated shared/light/dark CSS token maps. It changes
+    only the UI resource, not tool schemas, receipts, or stored knowledge.
 
     ``wrap_operation(tool_name, callable)`` optionally wraps every operation once
     for host context, telemetry, or result adaptation. Preserve the callable's
@@ -65,13 +68,14 @@ def create_server(service, *, name="Kajamite", version=__version__,
 
     server_name = name
     apps = Apps()
+    ui_resource_uri = resource_uri(ui_theme)
     mutation_tools = ("knowledge_create", "knowledge_edit", "knowledge_revise", "knowledge_move", "knowledge_record_create", "knowledge_record_transition", "knowledge_record_remove", "knowledge_record_maintain")
     for name in mutation_tools:
         method, description = OPERATIONS[name]
         apps.tool(
             name=name,
             description=description,
-            resource_uri=RESOURCE_URI,
+            resource_uri=ui_resource_uri,
             structured_output=True,
             annotations=ToolAnnotations(
                 read_only_hint=False,
@@ -81,14 +85,14 @@ def create_server(service, *, name="Kajamite", version=__version__,
             ),
         )(operation(name, method))
     apps.add_html_resource(
-        RESOURCE_URI,
-        html(),
+        ui_resource_uri,
+        html(ui_theme),
         title="Knowledge change",
         description="Read-only receipt for a completed Kajamite mutation",
         csp=ResourceCsp(
             connectDomains=[], resourceDomains=[], frameDomains=[], baseUriDomains=[]
         ),
-        prefers_border=True,
+        prefers_border=False,
     )
 
     server = MCPServer(

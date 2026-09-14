@@ -19,8 +19,11 @@ basic-memory = ["mcp==2.1.1"]
 [project.scripts]
 kajamite = "kajamite.__main__:main"
 
+[tool.hatch.build.hooks.custom]
+path = "tools/ui_build_hook.py"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/kajamite"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src", "tests", "tools", "skills", "docs", "README.md", "LICENSE", "pyproject.toml", "uv.lock", "requirements.lock", ".github"]
+include = ["src", "tests", "tools", "skills", "docs", "README.md", "LICENSE", "pyproject.toml", "uv.lock", "requirements.lock", ".github", "web", "AGENTS.md"]

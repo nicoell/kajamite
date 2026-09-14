@@ -15,7 +15,7 @@ PATTERNS = {
     'private key': re.compile(rb'-----BEGIN (?:[A-Z ]*PRIVATE KEY)-----'),
     'credential token': re.compile(rb'\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[A-Z0-9]{16}|sk-[A-Za-z0-9_-]{20,})'),
     'machine home path': re.compile(rb'(?:/home/|/Users/|[A-Za-z]:[\\/]+Users[\\/]+)[A-Za-z0-9_.-]+'),
-    'private network address': re.compile(rb'\b(?:192\.168\.|10\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)\d{1,3}\.\d{1,3}\b'),
+    'private network address': re.compile(rb'\b(?:192\.168\.|10\.\d{1,3}\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)\d{1,3}\.\d{1,3}\b'),
 }
 
 

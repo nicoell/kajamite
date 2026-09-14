@@ -254,3 +254,9 @@ Select **View changes** for previous/current values and optional technical evide
 The card requests fullscreen when supported and otherwise opens details inline.
 Maintenance, preview, replay, partial completion, and failure have distinct states.
 See [change presentation](docs/change-presentation.md) for coverage and host limits.
+
+### Configurable change UI
+
+The bundled shadcn interface accepts adopter themes without a frontend build.
+See [UI theming](docs/ui-theming.md) for tweakcn exports and embedding configuration,
+and [UI development](web/README.md) for the package build.

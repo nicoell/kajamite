@@ -225,3 +225,53 @@ capability audit and governed-engine commissioning both passed against Basic
 Memory 0.23.0. Together with the retained-corpus run, these cover all three native
 commissioning components. This is separate-run evidence, not a claim that the
 first complete commissioning invocation passed.
+
+## Configurable shadcn UI validation
+
+The shadcn UI candidate passed 77 source tests, including both real Chromium
+checks with a simulated MCP Apps host. Thirteen protocol, theme, and browser
+tests also passed against the installed wheel outside the source tree.
+
+A clean `npm ci --ignore-scripts` followed by `npm run check` reproduced the
+packaged HTML and notices. Type checking and formatting passed. The bundle is
+300,237 bytes, or 92,862 bytes with gzip; MCP transport compression is host-owned.
+The npm audit reported zero known vulnerabilities on 2026-09-14.
+
+The Python build produced a source distribution, then built the wheel from it.
+Node and npm commands were replaced with failing sentinels during this check;
+neither was invoked. The installed wheel includes the UI and third-party notices.
+Source/artifact mismatch tests reject stale, missing, and modified build inputs.
+
+Theme tests cover CSS exports, tweakcn registry maps including shared typography,
+relative configuration paths, separate resource cache keys, host/adopter precedence,
+light/dark changes, and rejection of rules, URLs, escapes, and unsupported tokens.
+A current tweakcn registry export also loaded successfully. Browser tests verified
+no external asset requests. Synthetic default, dark, and themed layouts were
+visually inspected. Receipt payloads retain their existing operation semantics.
+
+Actual Codex and ChatGPT rendering remains unverified. Native backend commissioning
+was not rerun locally for this presentation/configuration change; the existing
+CI backend checks remain enabled. The earlier live-search limitation remains.
+
+The publication check now requires four octets for private IPv4 addresses.
+Regression tests distinguish dependency versions from all three private ranges;
+the previous expression incorrectly classified npm version 10.9.8 as an address.
+
+The first UI CI job passed. Windows exposed a test expectation that compared
+a temporary-directory alias with its resolved path. The expectation now resolves
+the path, matching the configuration contract; production path handling is unchanged.
+
+## Change presentation redesign
+
+The redesigned candidate passes 78 source tests, including three real Chromium
+checks. New checks cover labeled field transitions, hidden revision counters,
+visible partial failures, summaries around changed words after long shared text,
+bounded excerpt disclosure, and transparent document backgrounds with opaque
+cards. Existing host fallback, theme replacement, inert text, and 320px checks
+also pass. A separate synthetic gallery exercises all 20 outcome scenarios.
+
+The reproducible bundle is 309,347 bytes (95,257 gzip bytes). Frontend formatting,
+type checks, artifact hashes, and publication guards pass. Light, dark, and narrow
+screenshots were inspected. This redesign has source/browser evidence; the prior
+installed-wheel and CI evidence above describes the preceding candidate. Actual
+host rendering and user acceptance remain separate from synthetic validation.

@@ -25,12 +25,14 @@ async def execute(args):
         raise
     from .engine import KnowledgeEngine
     settings = Settings.load(args.config)
+    from .theme import load_theme
+    ui_theme = load_theme(settings.ui_theme) if args.command == "serve" and settings.ui_theme else None
     async with connect(settings) as backend:
         service = KnowledgeEngine(backend)
         if args.command == "serve":
             from .server import create_server
             await backend.check()
-            await create_server(service).run_stdio_async()
+            await create_server(service, ui_theme=ui_theme).run_stdio_async()
         elif args.command == "doctor":
             print(json.dumps(await backend.check()))
         else:
