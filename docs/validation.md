@@ -213,7 +213,15 @@ before either preview or mutation. Maintenance now exposes its receipt UI.
 The Python dependency set is unchanged, and the updated package lock passes
 `uv lock --check --offline`.
 
-A native commissioning attempt passed the mutation and grouped-revision checks
-but failed the existing large-search continuation assertion. The second page
-returned no scoped target. Investigation retains an isolated synthetic corpus
-on a subsequent run. This failure is unresolved at this review checkpoint.
+One native commissioning attempt passed mutations and grouped revisions but
+failed the existing large-search continuation assertion. A retained-corpus run
+passed unchanged, followed by three successful continuation checks on that corpus.
+The native query returned 276 rows for 261 unique paths. Pagination remains live,
+and this observation does not prove the exact cause of the initial failure.
+No search assertion was weakened and no production retrieval code was changed.
+
+The installed 0.6.0 wheel matches the reviewed UI and guide. Its independent
+capability audit and governed-engine commissioning both passed against Basic
+Memory 0.23.0. Together with the retained-corpus run, these cover all three native
+commissioning components. This is separate-run evidence, not a claim that the
+first complete commissioning invocation passed.
