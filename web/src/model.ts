@@ -1,5 +1,8 @@
 export type Entry = {
   title: string;
+  note?: string;
+  kind?: "text" | "field" | "location" | "message";
+  truncated?: boolean;
   before?: string;
   after?: string;
   message?: string;
@@ -12,18 +15,36 @@ export type View = {
   scope: string;
   entries: Entry[];
   action: string;
+  attention?: string;
+  summary: string;
 };
 const text = (value: any) =>
   typeof value === "string" ? value : JSON.stringify(value);
 const noun = (n: number, singular: string) =>
   `${n} ${singular}${n === 1 ? "" : "s"}`;
-const valueText = (value: any) =>
-  value == null
-    ? "None"
-    : value.preview +
-      (value.truncated
-        ? `\nPreview · ${value.characters} characters in full value`
-        : "");
+const valueText = (value: any) => (value == null ? "None" : value.preview);
+export const noteName = (path: string) =>
+  path.split("/").filter(Boolean).at(-1)?.replace(/\.md$/i, "") || path;
+const fieldLabel = (key: string) => {
+  const name = key.replace(/[_-]/g, " ");
+  return name.charAt(0).toUpperCase() + name.slice(1);
+};
+export const excerpt = (value = "", limit = 120) => {
+  const line = value.replace(/\s+/g, " ").trim();
+  return line.length > limit ? line.slice(0, limit).trimEnd() + "…" : line;
+};
+export function changeExcerpts(before = "", after = ""): [string, string] {
+  let start = 0;
+  while (
+    start < Math.min(before.length, after.length) &&
+    before[start] === after[start]
+  )
+    start++;
+  const offset = Math.max(0, start - 35);
+  const crop = (s: string) =>
+    (offset ? "…" : "") + excerpt(s.slice(offset), 110);
+  return [crop(before), crop(after)];
+}
 const receiptEntries = (receipt: any) => {
   const result: Entry[] = [],
     body = receipt.body_change;
@@ -33,21 +54,35 @@ const receiptEntries = (receipt: any) => {
     for (const [index, item] of body.replacements.entries()) {
       if (item.before?.sha256 !== item.after?.sha256)
         result.push({
-          title: `${title} · Passage ${index + 1}`,
+          title: `Text edit ${index + 1}`,
+          note: title,
+          kind: "text",
+          truncated: item.before?.truncated || item.after?.truncated,
           before: valueText(item.before),
           after: valueText(item.after),
         });
     }
   } else if (body && body.before?.sha256 !== body.after?.sha256) {
     result.push({
-      title: `${title} · Content`,
+      title:
+        body.kind === "created"
+          ? "Added content"
+          : body.kind === "removed"
+            ? "Removed content"
+            : "Note text",
+      note: title,
+      kind: "text",
+      truncated: body.before?.truncated || body.after?.truncated,
       before: valueText(body.before),
       after: valueText(body.after),
     });
   }
   for (const change of receipt.metadata_changes ?? []) {
+    if (["record_revision"].includes(change.key)) continue;
     result.push({
-      title: `${title} · ${change.key}`,
+      title: fieldLabel(change.key),
+      note: title,
+      kind: "field",
       before: change.before_present === false ? "Absent" : text(change.before),
       after: change.after_present === false ? "Absent" : text(change.after),
     });
@@ -55,6 +90,8 @@ const receiptEntries = (receipt: any) => {
   if (receipt.operation.startsWith("move"))
     result.push({
       title: "Location",
+      kind: "location",
+      note: title,
       before: receipt.before?.identifier,
       after: receipt.after?.identifier,
     });
@@ -75,6 +112,7 @@ export function describe(output: any = {}, isError = false): View {
       "This operation only. Other tools and direct edits are outside this receipt.",
     entries: [],
     action: "View changes",
+    summary: "",
   };
   let entries: Entry[] = [];
   try {
@@ -157,7 +195,9 @@ export function describe(output: any = {}, isError = false): View {
       );
       entries.push(
         ...errors.map((error: any) => ({
-          title: error.identifier ?? error.record_id ?? "Error",
+          title: "Could not update",
+          kind: "message",
+          note: error.identifier ?? error.record_id ?? "Unknown note",
           message: error.error,
         })),
       );
@@ -198,6 +238,7 @@ export function describe(output: any = {}, isError = false): View {
     }));
   }
   view.entries = entries.map((item) => ({
+    ...item,
     title: text(item.title),
     before: text(item.before),
     after: text(item.after),
@@ -206,5 +247,37 @@ export function describe(output: any = {}, isError = false): View {
   if (isError) view.action = "View error";
   else if (output?.preview) view.action = "View preview";
   else if (!entries.length) view.action = "View details";
+  const receipt = output?.knowledge_change;
+  if (
+    isError ||
+    output?.partial ||
+    output?.errors?.length ||
+    (!receipt &&
+      !completedResult(output) &&
+      !output?.preview &&
+      !output?.replayed)
+  )
+    view.attention = view.status;
+  if (receipt && !output.replayed) {
+    if (receipt.operation === "create") view.summary = "New note saved.";
+    else if (receipt.operation === "remove_note")
+      view.summary = "Note removed.";
+    else if (receipt.operation.startsWith("move"))
+      view.summary = "Location changed; note text is unchanged.";
+    else if (!view.entries.length)
+      view.summary = isChanged(receipt)
+        ? "Record tracking updated; note text and other fields are unchanged."
+        : "The note already matches the requested edit.";
+  }
+  if (output?.replayed)
+    view.summary = "This is an earlier result. Nothing was written again.";
+  if (output?.preview) view.summary = "Proposed text. Nothing has been saved.";
+  if (completedResult(output) && !view.entries.length)
+    view.summary = "No notes changed in this operation.";
+  if (isError) view.summary = excerpt(view.entries[0]?.message, 220);
+  if (!view.entries.length && !view.summary)
+    view.summary = "No saved change could be confirmed from this result.";
   return view;
 }
+
+const completedResult = (output: any) => Array.isArray(output?.completed);

@@ -42,6 +42,7 @@ const result = async (value, error=false) => {reply({method:'ui/notifications/to
  await initialization; await result({knowledge_change:CHANGE});
  assert(el('review').hidden && !el('evidence'), 'details start hidden');
  assert(doc().body.getBoundingClientRect().height < 240, 'compact initial height');
+ assert(el('overview').textContent.includes('old passage 0') && el('overview').textContent.includes('new passage 0'), 'real edits visible without interaction');
  assert(el('counts').textContent === '1 note · 9 changes', 'notes and passages are distinct');
  el('toggle').click(); await wait();
  assert(requests[0] === 'fullscreen' && !el('review').hidden, 'advertised fullscreen');
@@ -139,8 +140,9 @@ const load = async index => {
  assert(token('primary')==='#ff0000', 'host shadcn token');
  host({styles:{variables:{'--primary':'url(https://example.invalid/track)','--background':'red; color: blue','--not-supported':'red'}}}); await wait();
  assert(!token('primary') && !token('background') && !token('not-supported'), 'replace clears stale and unsafe tokens');
- const light = style(doc().body).backgroundColor;
- host({theme:'dark'});await wait();assert(style(doc().body).backgroundColor!==light, 'host appearance changes default theme');
+ assert(style(doc().body).backgroundColor==='rgba(0, 0, 0, 0)' && style(doc().documentElement).backgroundColor==='rgba(0, 0, 0, 0)', 'transparent embedding');
+ const light = style(doc().querySelector('[data-slot="card"]')).backgroundColor;
+ host({theme:'dark'});await wait();assert(style(doc().querySelector('[data-slot="card"]')).backgroundColor!==light, 'host appearance changes default theme');
  await load(1);
  assert(token('primary')==='#123456','adopter light theme');
  host({styles:{variables:{'--primary':'#ff0000'}},theme:'dark'});await wait();
@@ -148,6 +150,8 @@ const load = async index => {
  assert(token('radius')==='0.5rem','shared geometry retained');
  host({theme:'light'});await wait();assert(token('primary')==='#123456','return to light');
  doc().getElementById('toggle').click();await wait();
+ assert(!doc().getElementById('evidence-toggle'),'raw receipt behind secondary disclosure');
+ doc().getElementById('about-toggle').click();await wait();
  const evidence=doc().getElementById('evidence-toggle');evidence.focus();evidence.click();await wait();
  assert(doc().getElementById('raw').textContent.includes('Synthetic preview'),'accessible evidence disclosure');
  send({method:'ui/notifications/tool-result',params:{structuredContent:{}}});await wait();
@@ -160,4 +164,43 @@ const load = async index => {
  document.getElementById('outcome').textContent='BROWSER_ACCEPTANCE_OK';
 })().catch(error=>document.getElementById('outcome').textContent='FAILED: '+error.message);
 """
+        self.run_browser(script)
+
+    def test_semantic_summary_and_bounded_comparison(self):
+        before = {'file_path': 'Plans/Conference.md', 'content': 'Agenda', 'metadata': {'status': 'draft', 'record_revision': 1}}
+        change = receipt.for_edit(before, before | {'metadata': {'status': 'confirmed', 'record_revision': 2}},
+                                  find_text=None, replacement=None, metadata_keys={'status', 'record_revision'})
+        long_text = 'Shared context ' * 65
+        long_change = receipt.for_revise(before, before | {'content': 'Updated'}, [
+            {'find_text': long_text + 'Arrive Monday.', 'replacement': long_text + 'Arrive Tuesday.'}])
+        script = 'const CHANGES=' + json.dumps([change, long_change]) + ';const PAGE=' + json.dumps(html()) + ';' + r'''
+const frame=document.querySelector('iframe');
+const send=data=>frame.contentWindow.postMessage({jsonrpc:'2.0',...data},'*');
+const wait=()=>new Promise(r=>setTimeout(r,70));
+const doc=()=>frame.contentDocument, el=id=>doc().getElementById(id);
+const assert=(v,m)=>{if(!v)throw Error(m)};
+let ready=false;
+window.addEventListener('message',e=>{if(e.source!==frame.contentWindow)return;
+ if(e.data.method==='ui/initialize')send({id:e.data.id,result:{hostContext:{theme:'light',availableDisplayModes:['inline']}}});
+ if(e.data.method==='ui/notifications/initialized')ready=true;
+});
+(async()=>{
+ frame.srcdoc=PAGE;for(let i=0;i<30&&!ready;i++)await wait();assert(ready,'initialized');
+ const result=async value=>{send({method:'ui/notifications/tool-result',params:{structuredContent:value}});await wait();};
+ await result({knowledge_change:CHANGES[0]});
+ assert(el('subject').textContent.includes('Conference'),'named subject');
+ assert(el('overview').textContent.includes('Status: draft → confirmed'),'field labeled in summary');
+ assert(!el('overview').textContent.includes('revision'),'counter excluded');
+ el('toggle').click();await wait();assert(el('changes').textContent.includes('Status'),'field labeled in details');
+ assert(!el('evidence-toggle')&&!el('raw'),'diagnostics secondary');
+ await result({knowledge_change:CHANGES[1]});
+ assert(el('overview').textContent.includes('Monday')&&el('overview').textContent.includes('Tuesday'),'summary reaches changed words after long shared prefix');
+ el('toggle').click();await wait();
+ const full=Array.from(doc().querySelectorAll('button')).find(b=>b.textContent==='Show full excerpt');
+ assert(full,'long excerpt bounded');full.click();await wait();assert(el('changes').textContent.includes('Tuesday'),'full excerpt reachable');
+ await result({completed:[{knowledge_change:CHANGES[0]}],errors:[{identifier:'Plans/Other.md',error:'Revision conflict'}],partial:true});
+ assert(doc().body.textContent.includes('Other: Revision conflict')&&el('review').hidden,'failure visible without opening');
+ document.getElementById('outcome').textContent='BROWSER_ACCEPTANCE_OK';
+})().catch(e=>document.getElementById('outcome').textContent='FAILED: '+e.message);
+'''
         self.run_browser(script)

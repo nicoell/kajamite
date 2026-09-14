@@ -34,7 +34,11 @@ A minimal CSS theme contains light and dark variable blocks:
 
 Use a full palette to change card surfaces and text. `primary` affects controls
 that use that token; it does not recolor every element. The default review button
-uses the outline variant and follows `background`, `foreground`, and `border`.
+uses the primary variant and follows `primary` and `primary-foreground`.
+
+The default palette uses yellow-green accents with neutral light/dark cards.
+The document background is transparent; the card remains opaque. See the
+[presentation design](ui-design.md) for the information hierarchy and palette source.
 
 ## Export from tweakcn
 

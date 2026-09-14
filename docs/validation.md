@@ -260,3 +260,18 @@ the previous expression incorrectly classified npm version 10.9.8 as an address.
 The first UI CI job passed. Windows exposed a test expectation that compared
 a temporary-directory alias with its resolved path. The expectation now resolves
 the path, matching the configuration contract; production path handling is unchanged.
+
+## Change presentation redesign
+
+The redesigned candidate passes 78 source tests, including three real Chromium
+checks. New checks cover labeled field transitions, hidden revision counters,
+visible partial failures, summaries around changed words after long shared text,
+bounded excerpt disclosure, and transparent document backgrounds with opaque
+cards. Existing host fallback, theme replacement, inert text, and 320px checks
+also pass. A separate synthetic gallery exercises all 20 outcome scenarios.
+
+The reproducible bundle is 309,347 bytes (95,257 gzip bytes). Frontend formatting,
+type checks, artifact hashes, and publication guards pass. Light, dark, and narrow
+screenshots were inspected. This redesign has source/browser evidence; the prior
+installed-wheel and CI evidence above describes the preceding candidate. Actual
+host rendering and user acceptance remain separate from synthetic validation.
