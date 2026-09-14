@@ -75,6 +75,13 @@ project-local skill mechanism, or run `kajamite skill` to print it. The same gui
 is available as the `kajamite://guide` MCP resource. No particular client plugin
 or lifecycle hook is required.
 
+The guide directs an agent to inspect existing notes, choose deliberate placement,
+write for a reader and purpose, revise a coherent current account, and maintain a
+bounded collection without treating a receipt or a passing check as a prose-quality
+score. It includes generic editorial examples, not a required template or benchmark.
+See [editorial composition and maintenance](docs/editorial-design.md) for the
+source-informed design and the implemented revision and collection interfaces.
+
 ## Unified knowledge engine
 
 `kajamite.KnowledgeEngine` supplies the shared Python operation API.
@@ -101,6 +108,8 @@ The [record guide](docs/governance.md) describes record construction and validat
 | `knowledge_context` | Gather several notes under one shared body-character budget |
 | `knowledge_create` | Write supplied content/metadata into an explicit namespace |
 | `knowledge_edit` | Guarded body edits and/or metadata merges |
+| `knowledge_revise` | Preview or apply connected exact replacements against a complete-body hash |
+| `knowledge_inspect_collection` | Live bounded ordinary-note inventory with hashes and exact-duplicate candidates |
 | `knowledge_move` | Move a note or namespace through the backend |
 
 Creation takes `namespace`, not a local filesystem directory. Search requires
@@ -146,6 +155,22 @@ It is not scoped semantic search, and broad sparse queries may take several
 calls. Cursors are live pagination, not immutable snapshots: concurrent backend
 changes can change ranking. Lists use native page pagination. Context budgets
 cover note-body characters; structured metadata and listing overhead are separate.
+
+`knowledge_inspect_collection` wraps the same bounded native retrieval with an
+explicit namespace cursor, then rereads returned ordinary notes for complete-body
+hashes. Its exact-duplicate candidates cover only the returned page. It reports
+omissions and errors, never semantic duplication, link health, prose quality, or
+collection completion before `exhausted=true`.
+
+## Editorial evidence and limits
+
+The [editorial design](docs/editorial-design.md) is source-informed guidance for
+placement, composition, revision, and focused maintenance. It does not make a
+receipt, hash, duplicate candidate, or passing test a prose-quality score.
+Deterministic tests establish operation mechanics; a reader's usefulness and a
+consolidation's semantic judgment remain the calling agent's and human reviewer's
+responsibility. See [validation](docs/validation.md) for the distinct source,
+installed-package, and native-backend evidence and its remaining limits.
 
 ## Upgrading
 
@@ -221,3 +246,11 @@ Inspection remains available. Consumers can construct the engine with their own 
 `knowledge_related` discovers native graph neighbors within explicit namespaces.
 For configured semantic retrieval, set `backend.semantic_search=true` and select `retrieval_mode="semantic"` or `"hybrid"`.
 Kajamite does not configure or download an embedding model.
+
+## Compact change feedback
+
+Mutation results include a compact read-only card on compatible MCP Apps hosts.
+Select **View changes** for previous/current values and optional technical evidence.
+The card requests fullscreen when supported and otherwise opens details inline.
+Maintenance, preview, replay, partial completion, and failure have distinct states.
+See [change presentation](docs/change-presentation.md) for coverage and host limits.

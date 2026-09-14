@@ -3,109 +3,234 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Knowledge change</title>
+  <title>Knowledge changes</title>
   <style>
-    :root { color-scheme: light dark; font: 14px/1.4 system-ui, sans-serif; }
-    body { margin: 0; padding: 12px; background: Canvas; color: CanvasText; }
-    article { border: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
-      border-radius: 12px; padding: 14px; }
-    header { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
-    h1 { font-size: 16px; margin: 0 0 12px; }
-    .badge { border-radius: 999px; padding: 2px 8px; background: color-mix(in srgb, #16803a 15%, Canvas); color: #16803a; font-weight: 650; }
-    dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 12px; margin: 0; }
-    dt { opacity: .65; } dd { margin: 0; overflow-wrap: anywhere; }
-    section, details { margin-top: 14px; }
-    h2, h3, summary { font-size: 13px; font-weight: 650; }
-    h3 { margin: 0 0 6px; opacity: .7; }
-    .comparison { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    pre { margin: 8px 0 0; padding: 10px; border-radius: 8px; background: color-mix(in srgb, CanvasText 6%, Canvas); white-space: pre-wrap; overflow-wrap: anywhere; }
-    .comparison pre { margin: 0; min-height: 3em; }
-    ul { margin: 6px 0 0; padding-left: 20px; }
-    .notice { opacity: .72; font-size: 12px; }
-    [hidden] { display: none; }
+    :root { color-scheme: light dark; font: 14px/1.5 var(--font-sans, system-ui, sans-serif);
+      color: var(--color-text-primary, CanvasText); background: var(--color-background-primary, Canvas); }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 12px; }
+    h1, h2, h3, p { margin: 0; font-size: inherit; }
+    h1 { font-weight: 600; }
+    #subject { margin-top: 4px; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    #counts, .muted { color: var(--color-text-secondary, color-mix(in srgb, CanvasText 70%, Canvas)); }
+    #counts { margin-top: 4px; }
+    button, summary { font: inherit; cursor: pointer; }
+    button { color: inherit; background: transparent; border: 1px solid var(--color-border-primary, ButtonBorder);
+      border-radius: 8px; padding: 7px 12px; min-height: 36px; }
+    button:focus-visible, summary:focus-visible { outline: 2px solid Highlight; outline-offset: 3px; }
+    #actions { display: flex; gap: 8px; margin-top: 12px; }
+    #review { margin-top: 16px; }
+    .change { border-top: 1px solid var(--color-border-secondary, ButtonBorder); padding: 12px 0; }
+    .change h3 { font-weight: 600; overflow-wrap: anywhere; }
+    .comparison { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
+    pre { font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; margin: 4px 0 0; }
+    .label { font-size: 12px; color: var(--color-text-secondary, color-mix(in srgb, CanvasText 70%, Canvas)); }
+    #scope, #status { margin-top: 8px; font-size: 12px; }
+    #more { margin: 8px 0; }
+    #evidence { margin-top: 12px; }
+    #evidence pre { font: 12px/1.5 ui-monospace, monospace; }
+    [hidden] { display: none !important; }
     @media (max-width: 520px) { .comparison { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
-  <article>
-    <header><h1>Knowledge change</h1><span id="badge" class="badge">Waiting</span></header>
-    <dl id="summary"></dl>
-    <section id="body-section" hidden>
-      <h2>Changed body value</h2>
-      <div class="comparison">
-        <div><h3>Previous</h3><pre id="body-before"></pre></div>
-        <div><h3>Current</h3><pre id="body-after"></pre></div>
-      </div>
+  <main aria-label="Knowledge operation result">
+    <h1 id="headline" role="status">Waiting for result</h1>
+    <p id="subject"></p>
+    <p id="counts"></p>
+    <div id="actions" hidden><button id="toggle" aria-expanded="false" aria-controls="review">View changes</button></div>
+    <section id="review" hidden aria-label="Change details">
+      <div id="changes"></div>
+      <button id="more" hidden>Show more</button>
+      <p id="scope" class="muted"></p>
+      <details id="evidence"><summary>Technical evidence</summary><pre id="raw"></pre></details>
     </section>
-    <section id="metadata-section" hidden><h2>Changed metadata</h2><ul id="metadata"></ul></section>
-    <details><summary>Technical evidence</summary><pre id="evidence"></pre></details>
-    <p id="notice" class="notice"></p>
-  </article>
+    <p id="status" class="muted"></p>
+  </main>
   <script>
     (() => {
-      const byId = id => document.getElementById(id);
-      const addRow = (list, label, value) => {
-        const dt = document.createElement('dt'); dt.textContent = label;
-        const dd = document.createElement('dd'); dd.textContent = String(value);
-        list.append(dt, dd);
-      };
-      const readable = value => {
-        if (!value) return 'none';
-        return value.preview + (value.truncated ? `\n\nPreview of ${value.characters} characters` : '');
-      };
-      const metadataValue = (change, side) => {
-        if (change[`${side}_present`] === false) return '<absent>';
-        return JSON.stringify(change[side]);
-      };
-      const render = receipt => {
-        const summary = byId('summary'); summary.replaceChildren();
-        addRow(summary, 'Operation', receipt.operation);
-        addRow(summary, 'Before', receipt.before?.identifier ?? 'none');
-        addRow(summary, 'Current', receipt.after?.identifier ?? 'none');
-        addRow(summary, 'Coverage', receipt.coverage);
-        addRow(summary, 'Affected notes', receipt.affected_notes ?? 'not reported');
-        byId('badge').textContent = receipt.readback_verified ? 'Readback verified' : 'Backend confirmed';
-        const body = receipt.body_change;
-        byId('body-section').hidden = !body;
-        if (body) {
-          byId('body-before').textContent = readable(body.before);
-          byId('body-after').textContent = readable(body.after);
+      const $ = id => document.getElementById(id);
+      let output = {}, entries = [], visible = 3, expanded = false, host = {}, ready = false;
+      let nextId = 1, generation = 0;
+      const pending = new Map();
+      const send = (method, params) => window.parent.postMessage({jsonrpc: '2.0', method, params}, '*');
+      const request = (method, params, timeout = 1500) => new Promise((resolve, reject) => {
+        const id = nextId++;
+        const timer = setTimeout(() => { pending.delete(id); reject(new Error('Host did not respond')); }, timeout);
+        pending.set(id, {resolve, reject, timer});
+        window.parent.postMessage({jsonrpc: '2.0', id, method, params}, '*');
+      });
+      const text = value => typeof value === 'string' ? value : JSON.stringify(value);
+      const noun = (n, singular) => `${n} ${singular}${n === 1 ? '' : 's'}`;
+      const valueText = value => value == null ? 'None' : value.preview +
+        (value.truncated ? `\nPreview · ${value.characters} characters in full value` : '');
+      const receiptEntries = receipt => {
+        const result = [], body = receipt.body_change;
+        const title = receipt.after?.identifier ?? receipt.before?.identifier ?? 'Knowledge';
+        if (body?.kind === 'grouped_exact_replacement') {
+          for (const [index, item] of body.replacements.entries()) {
+            if (item.before?.sha256 !== item.after?.sha256)
+              result.push({title: `${title} · Passage ${index + 1}`, before: valueText(item.before), after: valueText(item.after)});
+          }
+        } else if (body && body.before?.sha256 !== body.after?.sha256) {
+          result.push({title: `${title} · Content`, before: valueText(body.before), after: valueText(body.after)});
         }
-        const metadata = receipt.metadata_changes ?? [];
-        byId('metadata-section').hidden = metadata.length === 0;
-        const metadataList = byId('metadata'); metadataList.replaceChildren();
-        for (const change of metadata) {
-          const item = document.createElement('li');
-          item.textContent = `${change.key}: ${metadataValue(change, 'before')} → ${metadataValue(change, 'after')}`;
-          metadataList.append(item);
+        for (const change of receipt.metadata_changes ?? []) {
+          result.push({title: `${title} · ${change.key}`,
+            before: change.before_present === false ? 'Absent' : text(change.before),
+            after: change.after_present === false ? 'Absent' : text(change.after)});
         }
-        byId('evidence').textContent = JSON.stringify({
-          schema_version: receipt.schema_version,
-          before: receipt.before,
-          after: receipt.after,
-          verification: receipt.verification,
-          affected_notes_exact: receipt.affected_notes_exact,
-          body_change: receipt.body_change,
-          metadata_changes: receipt.metadata_changes
-        }, null, 2);
-        byId('notice').textContent = receipt.coverage_notice;
+        if (receipt.operation.startsWith('move'))
+          result.push({title: 'Location', before: receipt.before?.identifier, after: receipt.after?.identifier});
+        return result;
       };
+      const isChanged = receipt => receipt.operation.startsWith('move') ||
+        receipt.before?.content_sha256 !== receipt.after?.content_sha256 || (receipt.metadata_changes?.length ?? 0) > 0;
+      const size = () => {
+        if (!ready || host.displayMode === 'fullscreen') return;
+        send('ui/notifications/size-changed', {width: document.documentElement.clientWidth,
+          height: Math.ceil(document.body.getBoundingClientRect().height)});
+      };
+      const setExpanded = value => {
+        expanded = value;
+        $('review').hidden = !value;
+        $('toggle').textContent = value ? 'Hide changes' : 'View changes';
+        $('toggle').setAttribute('aria-expanded', String(value));
+        if (value) renderEntries();
+        size();
+      };
+      const renderEntries = () => {
+        $('changes').replaceChildren();
+        for (const item of entries.slice(0, visible)) {
+          const section = document.createElement('section'); section.className = 'change';
+          const title = document.createElement('h3'); title.textContent = item.title; section.append(title);
+          if (item.message !== undefined) {
+            const message = document.createElement('pre'); message.textContent = item.message; section.append(message);
+          } else {
+            const comparison = document.createElement('div'); comparison.className = 'comparison';
+            for (const [label, value] of [['Previous', item.before], ['Current', item.after]]) {
+              const column = document.createElement('div');
+              const heading = document.createElement('p'); heading.className = 'label'; heading.textContent = label;
+              const content = document.createElement('pre'); content.textContent = value ?? 'None';
+              column.append(heading, content); comparison.append(column);
+            }
+            section.append(comparison);
+          }
+          $('changes').append(section);
+        }
+        $('more').hidden = visible >= entries.length;
+        $('more').textContent = `Show more (${Math.max(0, entries.length - visible)} remaining)`;
+      };
+      const render = (result, isError = false) => {
+        generation++;
+        output = result ?? {}; entries = []; visible = 3;
+        $('evidence').open = false;
+        $('subject').textContent = ''; $('counts').textContent = ''; $('status').textContent = '';
+        $('scope').textContent = 'This operation only. Other tools and direct edits are outside this receipt.';
+        const receipt = output.knowledge_change;
+        const completed = Array.isArray(output.completed) ? output.completed : null;
+        if (isError) {
+          $('headline').textContent = 'Operation failed';
+          $('status').textContent = 'A write may have committed. Inspect current state before retrying.';
+          entries = [{title: 'Error', message: (output.content ?? []).filter(x => x.type === 'text').map(x => x.text).join('\n') || 'No successful change receipt was returned.'}];
+        } else if (output.preview) {
+          $('headline').textContent = 'Preview · nothing saved';
+          $('subject').textContent = output.identifier ?? '';
+          entries = [{title: 'Proposed content', message: output.proposed_content ?? ''}];
+        } else if (receipt) {
+          const changed = isChanged(receipt);
+          const names = {create: 'Note created', edit: 'Note updated', revise: 'Note revised', move_note: 'Note moved', move_namespace: 'Namespace moved', remove_note: 'Note removed'};
+          $('headline').textContent = output.replayed ? 'Previously completed' : changed ? (names[receipt.operation] ?? 'Knowledge updated') : 'No content changes';
+          $('subject').textContent = receipt.after?.identifier ?? receipt.before?.identifier ?? '';
+          entries = receiptEntries(receipt);
+          const n = receipt.affected_notes;
+          const count = receipt.affected_notes_exact && Number.isInteger(n) ? noun(n, 'note') : 'Note count not reported';
+          $('counts').textContent = `${count} · ${noun(entries.length, 'change')}`;
+          $('status').textContent = receipt.readback_verified ? 'Saved result checked' : 'Backend confirmed';
+          if (output.replayed) $('status').textContent = 'Earlier result · no new write';
+          $('scope').textContent = receipt.coverage_notice;
+        } else if (completed) {
+          const fresh = completed.filter(item => !item.replayed && item.knowledge_change);
+          const changed = fresh.filter(item => isChanged(item.knowledge_change));
+          const replayed = completed.filter(item => item.replayed).length;
+          const missing = completed.filter(item => !item.replayed && !item.knowledge_change).length;
+          const errors = output.errors ?? [];
+          $('headline').textContent = output.partial || errors.length ? 'Maintenance partially completed' : changed.length ? 'Knowledge updated' : 'No new changes';
+          $('counts').textContent = `${noun(changed.length, 'note')} changed` +
+            (replayed ? ` · ${replayed} previously completed` : '') + (errors.length ? ` · ${noun(errors.length, 'error')}` : '') +
+            (missing ? ` · ${missing} outcomes without receipts` : '');
+          entries = fresh.flatMap(item => receiptEntries(item.knowledge_change));
+          entries.push(...errors.map(error => ({title: error.identifier ?? error.record_id ?? 'Error', message: error.error})));
+          $('status').textContent = output.partial || errors.length ? 'Inspect failed items before retrying.' : 'Maintenance result checked';
+        } else if (output.replayed) {
+          $('headline').textContent = 'Previously completed';
+          $('status').textContent = 'Earlier result · no new write';
+        } else {
+          $('headline').textContent = 'No change receipt returned';
+          $('status').textContent = 'Inspect the tool result before claiming a saved change.';
+        }
+        // All source values are data. Never insert HTML or turn paths into links.
+        $('raw').textContent = JSON.stringify(output, null, 2);
+        $('actions').hidden = false;
+        setExpanded(false);
+      };
+      const updateHost = context => {
+        const previousMode = host.displayMode;
+        host = {...host, ...context};
+        if (host.theme === 'light' || host.theme === 'dark') document.documentElement.style.colorScheme = host.theme;
+        for (const [key, value] of Object.entries(context?.styles?.variables ?? {})) {
+          if (key.startsWith('--')) document.documentElement.style.setProperty(key, value);
+        }
+        if (host.displayMode === 'fullscreen') setExpanded(true);
+        else if (previousMode === 'fullscreen') setExpanded(false);
+        size();
+      };
+      $('toggle').onclick = async () => {
+        if (expanded) {
+          setExpanded(false);
+          if (host.displayMode === 'fullscreen') {
+            try { const result = await request('ui/request-display-mode', {mode: 'inline'}); updateHost({displayMode: result.mode}); } catch (_) { /* Keep local disclosure usable. */ }
+          }
+          return;
+        }
+        const current = generation;
+        setExpanded(true);
+        if (host.availableDisplayModes?.includes('fullscreen')) {
+          try {
+            const result = await request('ui/request-display-mode', {mode: 'fullscreen'});
+            if (current === generation && expanded) updateHost({displayMode: result.mode});
+          } catch (_) { /* The same details remain available inline. */ }
+        }
+      };
+      $('more').onclick = () => { visible += 3; renderEntries(); size(); };
+      $('evidence').ontoggle = size;
       window.addEventListener('message', event => {
         if (event.source !== window.parent) return;
         const message = event.data;
-        if (message?.id === 1 && message?.result) {
-          window.parent.postMessage({jsonrpc: '2.0', method: 'ui/notifications/initialized'}, '*');
+        if (!message || message.jsonrpc !== '2.0') return;
+        if (pending.has(message.id)) {
+          const call = pending.get(message.id); pending.delete(message.id); clearTimeout(call.timer);
+          if (message.error) call.reject(message.error); else call.resolve(message.result ?? {});
+          return;
         }
-        if (message?.method === 'ui/notifications/tool-result') {
-          const receipt = message.params?.structuredContent?.knowledge_change;
-          if (receipt) render(receipt);
+        if (message.method === 'ui/notifications/host-context-changed') updateHost(message.params ?? {});
+        if (message.method === 'ui/notifications/tool-result') render(message.params?.structuredContent ?? message.params, message.params?.isError);
+        if (message.method === 'ui/notifications/tool-input') {
+          generation++; $('headline').textContent = 'Working'; $('subject').textContent = '';
+          $('counts').textContent = ''; $('status').textContent = ''; $('actions').hidden = true; setExpanded(false);
+        }
+        if (message.method === 'ui/notifications/tool-cancelled') {
+          render({content: [{type: 'text', text: message.params?.reason ?? 'Operation cancelled'}]}, true);
+          $('headline').textContent = 'Operation cancelled';
         }
       });
-      window.parent.postMessage({jsonrpc: '2.0', id: 1, method: 'ui/initialize', params: {
-        protocolVersion: '2026-01-26',
-        appInfo: {name: 'kajamite-knowledge-change', version: '1.0.0'},
+      if (window.ResizeObserver) new ResizeObserver(size).observe(document.body);
+      request('ui/initialize', {protocolVersion: '2026-01-26',
+        appInfo: {name: 'kajamite-knowledge-change', version: '2.0.0'},
         appCapabilities: {availableDisplayModes: ['inline', 'fullscreen']}
-      }}, '*');
+      }, 10000).then(result => {
+        ready = true; send('ui/notifications/initialized', {}); updateHost(result.hostContext ?? {});
+      }).catch(() => { $('status').textContent = 'Waiting for the host. The tool result remains available in chat.'; });
     })();
   </script>
 </body>

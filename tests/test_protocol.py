@@ -5,6 +5,7 @@ from contextlib import AsyncExitStack
 from functools import wraps
 import os
 from pathlib import Path
+import subprocess
 import sys
 import unittest
 from typing import Any
@@ -17,6 +18,7 @@ from kajamite import receipt
 from kajamite.errors import MutationUncertain
 from kajamite.server import INSTRUCTIONS, OPERATIONS, create_server
 from kajamite.ui import RESOURCE_URI
+from kajamite.ui import html
 
 
 SOURCE_ROOT = str(Path(__file__).resolve().parents[1] / "src")
@@ -49,6 +51,15 @@ class ProtocolService:
         if identifier == "uncertain":
             raise MutationUncertain("Mutation outcome is uncertain; inspect current state before retrying.")
         return {"note": {"identifier": identifier}}
+
+    async def revise(self, identifier: str, expected_content_sha256: str, replacements: list[dict[str, str]], preview=False) -> dict[str, Any]:
+        if identifier == "uncertain":
+            raise MutationUncertain("Mutation outcome is uncertain; inspect current state before retrying.")
+        return {"preview": preview, "note": {"identifier": identifier}}
+
+    async def inspect_collection(self, namespace: str, recursive=True, cursor=None, page_size=20) -> dict[str, Any]:
+        return {"namespace": namespace, "notes": [], "candidates": [], "has_more": False,
+                "exhausted": True, "next_cursor": None}
 
     async def list(self, namespace="/", depth=1, page=1, page_size=20, glob=None, sort=None) -> dict[str, Any]:
         return {"nodes": [], "has_more": False}
@@ -95,6 +106,26 @@ async def _serve():
 
 
 class ProtocolTests(unittest.IsolatedAsyncioTestCase):
+    def test_receipt_ui_renders_grouped_revision_values(self):
+        self.assertIn("grouped_exact_replacement", html())
+
+    def test_cli_catalog_and_packaged_guide_match_shared_sources(self):
+        environment = os.environ | {"PYTHONPATH": SOURCE_ROOT}
+        call_help = subprocess.run(
+            [sys.executable, "-m", "kajamite", "call", "--help"], env=environment,
+            capture_output=True, text=True, check=True,
+        )
+        for name in OPERATIONS:
+            self.assertIn(name, call_help.stdout)
+        skill = subprocess.run(
+            [sys.executable, "-m", "kajamite", "skill"], env=environment,
+            capture_output=True, text=True, check=True,
+        )
+        self.assertEqual(
+            (Path(SOURCE_ROOT) / "kajamite" / "SKILL.md").read_text(encoding="utf-8"),
+            skill.stdout,
+        )
+
     async def test_live_protocol_contract_and_errors(self):
         parameters = StdioServerParameters(
             command=sys.executable,
@@ -122,6 +153,16 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
             )
             self.assertTrue(tools["knowledge_read"]["annotations"]["readOnlyHint"])
             self.assertTrue(tools["knowledge_edit"]["annotations"]["destructiveHint"])
+            self.assertTrue(tools["knowledge_revise"]["annotations"]["destructiveHint"])
+            self.assertEqual(
+                {"identifier", "expected_content_sha256", "replacements", "preview"},
+                set(tools["knowledge_revise"]["inputSchema"]["properties"]),
+            )
+            self.assertTrue(tools["knowledge_inspect_collection"]["annotations"]["readOnlyHint"])
+            self.assertEqual(
+                {"namespace", "recursive", "cursor", "page_size"},
+                set(tools["knowledge_inspect_collection"]["inputSchema"]["properties"]),
+            )
             self.assertFalse(tools["knowledge_create"]["annotations"]["openWorldHint"])
 
             result = await session.call_tool("knowledge_search", {"namespaces": ["Notes"], "query": "example"})
@@ -206,7 +247,7 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
                 tool.name: tool.model_dump(mode="json", by_alias=True)
                 for tool in listed.tools
             }
-            for name in ("knowledge_create", "knowledge_edit", "knowledge_move"):
+            for name in ("knowledge_create", "knowledge_edit", "knowledge_revise", "knowledge_move", "knowledge_record_maintain"):
                 self.assertEqual(RESOURCE_URI, tools[name]["_meta"]["ui"]["resourceUri"])
             self.assertIsNone(tools["knowledge_read"]["_meta"])
 

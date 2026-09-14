@@ -161,6 +161,35 @@ class KnowledgeEngine(MaintenanceOperations, NoteOperations):
         await self._authorize(identifier, None)
         return await super().edit(identifier, find_text, replacement, metadata)
 
+    async def revise(
+        self, identifier: str, expected_content_sha256: str,
+        replacements: list[dict[str, str]], preview: bool = False,
+    ) -> dict[str, Any]:
+        await self._authorize(identifier, None)
+        return await super().revise(identifier, expected_content_sha256, replacements, preview)
+
+    async def inspect_collection(
+        self, namespace: str, recursive: bool = True, cursor: str | None = None,
+        page_size: int = 20,
+    ) -> dict[str, Any]:
+        return await super().inspect_collection(namespace, recursive, cursor, page_size)
+
+    async def _collection_search(
+        self, scope: str, recursive: bool, cursor: str | None, page_size: int,
+    ) -> dict[str, Any]:
+        return await self.search([scope], query=None, recursive=recursive, cursor=cursor,
+                                 page_size=page_size, mode="inspect")
+
+    async def _inspection_note(self, identifier: str) -> tuple[dict[str, Any], dict[str, str] | None]:
+        try:
+            await self._authorize(identifier, None)
+        except AccessDenied:
+            return {}, {"identifier": identifier, "reason": "access_denied"}
+        note = await self._read_full(identifier)
+        if self._record_from_note(note) is not None:
+            return {}, {"identifier": identifier, "reason": "governed_record"}
+        return note, None
+
     async def _check_generic_note(self, note: dict[str, Any]) -> None:
         if self._record_key in self._metadata(note) or self._metadata(note).get("type") == self._governed_kind:
             raise KnowledgeError("governed records require an explicit lifecycle transition")

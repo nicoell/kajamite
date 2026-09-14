@@ -165,3 +165,63 @@ PR #3 passed all six Windows/Linux CI jobs (run 34585749834), including native
 Basic Memory 0.23.0 acceptance. A separate native engine check confirmed that
 claim correction preserves the original history event. All 57 tests passed
 with the installed 0.5.1 package.
+
+## Editorial composition and maintenance
+
+Working-tree verification on 2026-09-13 used the pinned Kajamite interpreter
+with `PYTHONPATH=src`. The full source/protocol suite passed 66 tests. It covers
+the shared Python, CLI, and MCP operation catalog; byte-identical packaged skill
+copies; the CLI `skill` output; the MCP guide resource; existing `knowledge_edit`
+compatibility; generic/governed separation; grouped revision preview, stale-hash,
+readback, receipt, and text-fallback behavior; and bounded collection inspection.
+Inspection cases cover scope/recursion/page-size cursor binding, incomplete empty
+pages, exact duplicates as page-scoped candidates, and governed or unauthorized
+omissions. A synthetic two-note walkthrough injects the second write's uncertain
+failure, rereads its source hash, and resumes only the still-valid outstanding
+revision.
+
+The working tree was also built and installed into a disposable virtual
+environment with the hashed dependency lock. Its packaged guide matched the
+source guide byte-for-byte, and all 66 tests passed against the installed wheel.
+
+The complete isolated commission entrypoint then passed against Basic Memory
+0.23.0. Its ordinary-note scenario exercised grouped revision, its receipt and
+text fallback, bounded collection inspection, existing edit/move behavior, and
+native full-text continuation. The capability and governed-engine scenarios also
+passed. All state was synthetic and temporary. This establishes backend operation
+behavior, not editorial usefulness or compatibility with every future Basic
+Memory release.
+
+The editorial design is source-informed by inspected upstream mechanisms and
+historical failure reports. Deterministic tests establish operation mechanics,
+not that prose is readable, correctly scoped, or useful. The documentation was
+reviewed for coherent purpose, boundaries, useful-detail preservation, and
+honest limitations; that is human editorial judgment, not a universal score or
+usability study.
+
+## Kajamite 0.6.0 review validation
+
+The adapted editorial change passed 68 source tests, including real Chromium
+acceptance with a simulated MCP Apps host. The UI checks cover compact initial
+layout, incremental disclosure, display-mode negotiation, refusal, timeout,
+resize notifications, narrow width, inert source text, and operation states.
+The compact and expanded synthetic layouts were also visually inspected.
+These checks do not establish rendering in an actual Codex or ChatGPT account.
+
+Revision regression coverage rejects overlapping occurrences of one selection
+before either preview or mutation. Maintenance now exposes its receipt UI.
+The Python dependency set is unchanged, and the updated package lock passes
+`uv lock --check --offline`.
+
+One native commissioning attempt passed mutations and grouped revisions but
+failed the existing large-search continuation assertion. A retained-corpus run
+passed unchanged, followed by three successful continuation checks on that corpus.
+The native query returned 276 rows for 261 unique paths. Pagination remains live,
+and this observation does not prove the exact cause of the initial failure.
+No search assertion was weakened and no production retrieval code was changed.
+
+The installed 0.6.0 wheel matches the reviewed UI and guide. Its independent
+capability audit and governed-engine commissioning both passed against Basic
+Memory 0.23.0. Together with the retained-corpus run, these cover all three native
+commissioning components. This is separate-run evidence, not a claim that the
+first complete commissioning invocation passed.

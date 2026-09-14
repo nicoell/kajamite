@@ -74,6 +74,23 @@ reserved metadata keys that the backend ignores are rejected instead of silently
 pretending they changed. Arbitrary user status/type conventions do not certify support.
 Reserved engine metadata requires the record operations.
 
+Editorial judgment belongs to the calling agent, while the engine supplies
+bounded retrieval and faithful mutations. See [editorial composition and
+maintenance](editorial-design.md). `knowledge_revise` is the ordinary-note path
+for several connected exact replacements: it requires a complete-body SHA-256
+returned by read/context, preserves unselected bytes, and rechecks that hash
+before a preview or write. It does not change metadata or
+governed records. `knowledge_edit` remains the compatible one-replacement and
+metadata-merge operation.
+
+Collection maintenance has no hidden registry or quality score. The read-only
+`knowledge_inspect_collection` fills the specific gap between listing
+and context: a bounded explicit namespace inventory with complete-body hashes,
+continuation, and honest omissions. It can report exact duplicate candidates
+within its inspected page, never semantic duplication or a claim that a partial
+scan is complete. Callers make consolidation decisions and use explicit
+per-note revisions; Kajamite has no cross-note transaction or automatic cleanup.
+
 Note and namespace moves delegate to native move_note. Root/path traversal moves
 are invalid; destinations cannot overwrite unrelated notes. Returned addresses
 and backend move results are authoritative; Kajamite does not promise universal

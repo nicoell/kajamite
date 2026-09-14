@@ -10,7 +10,7 @@ The MCP frontend is optional.
 | --- | --- |
 | Knowledge engine | Capture, lifecycle transitions, expected revisions, current readback, eligibility, and change receipts. |
 | Backend adapter | Public storage operations, indexing, observation search, and graph discovery. |
-| Consumer | Source access, authorization, evidence checks, and domain policy. |
+| Consumer | Source access, authorization, evidence checks, domain policy, and editorial judgment. |
 | Frontend | Argument transport and result presentation. |
 
 The engine does not certify truth.
@@ -52,6 +52,16 @@ A content-free summary alone never proves persistence.
 An index can lag behind committed Markdown.
 Search and deletion results must report projection limitations honestly.
 
+For ordinary-note multi-passage revision, the expected revision is the
+lowercase SHA-256 of the complete current UTF-8 body, named
+`expected_content_sha256`. It matches the complete-body hashes already used in
+change receipts, not a paged content preview or metadata. The revision operation
+does not mutate metadata, so metadata is outside that particular precondition.
+It validates all exact selections against one original body, rejects ambiguity or
+overlap before a write, and copies unselected bytes unchanged. Preview repeats
+the same calculation without mutation; application always rechecks the hash.
+Generic revision cannot bypass governed-record lifecycle rules.
+
 ## Retrieval
 
 Namespace scope controls retrieval, not authorization.
@@ -67,6 +77,13 @@ Context limits apply after candidate selection, with explicit omissions.
 Text search retains bounded native pagination.
 Semantic and hybrid modes require explicit backend configuration.
 A ranked candidate set cannot prove that no relevant knowledge exists.
+
+Collection inspection is an explicit, live, bounded namespace scan. Its cursor
+is scoped to the selected namespace, recursion setting, and page size; results identify the
+notes actually read and their complete-body hashes, continuation, and omissions.
+Only an exhausted scan is complete for that invocation. Exact equal bodies are
+candidates for caller review, not automatic consolidation; the engine makes no
+semantic-overlap claim and no cross-note atomicity guarantee.
 
 ## Dependency boundary
 

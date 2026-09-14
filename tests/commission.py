@@ -89,6 +89,10 @@ async def run(config, wiki):
     context = await call(config, "knowledge_context", {"namespace": "Visits/Observatory"})
     assert len(context["notes"]) == 2
     assert all(note["file_path"].startswith("Visits/Observatory/") for note in context["notes"])
+    inspection = await call(config, "knowledge_inspect_collection", {"namespace": "Visits/Observatory"})
+    assert inspection["exhausted"] and len(inspection["notes"]) == 2
+    assert all(len(note["content_sha256"]) == 64 for note in inspection["notes"])
+    assert not inspection["candidates"]
     metadata_edit = await call(config, "knowledge_edit", {"identifier": identifier, "metadata": {"status": "booked"}})
     metadata_change = receipt(metadata_edit, "edit")["metadata_changes"][0]
     assert metadata_change["key"] == "status"
@@ -105,6 +109,12 @@ async def run(config, wiki):
     assert corrected["metadata"]["custom"] == {"keep": True}
     assert corrected["metadata"]["status"] == "booked"
     assert "kajamite_project" not in corrected["metadata"]
+    preview = await call(config, "knowledge_revise", {"identifier": identifier, "expected_content_sha256": corrected["content_sha256"], "replacements": [{"find_text": "Sunday", "replacement": "Monday"}, {"find_text": "90 units", "replacement": "95 units"}], "preview": True})
+    assert preview["preview"] and "Monday" in preview["proposed_content"] and "95 units" in preview["proposed_content"]
+    revised = await call(config, "knowledge_revise", {"identifier": identifier, "expected_content_sha256": corrected["content_sha256"], "replacements": [{"find_text": "Sunday", "replacement": "Monday"}, {"find_text": "90 units", "replacement": "95 units"}]})
+    receipt(revised, "revise")
+    corrected = await call(config, "knowledge_read", {"identifier": identifier})
+    assert "Monday" in corrected["content"] and "95 units" in corrected["content"]
     note_move = await call(config, "knowledge_move", {"identifier": "Visits/Observatory/Transport.md", "destination": "Visits/Observatory/Logistics.md"})
     note_change = receipt(note_move, "move_note")
     assert note_change["before"]["content_sha256"] == note_change["after"]["content_sha256"]
@@ -120,7 +130,7 @@ async def run(config, wiki):
     assert not (wiki / "Visits/Observatory/Plan.md").exists()
     assert (wiki / "Archive/Observatory/Plan.md").exists()
     assert "evening shuttle" in (wiki / "Archive/Observatory/Logistics.md").read_text(encoding="utf-8")
-    results = await call(config, "knowledge_search", {"namespaces": ["Archive/Observatory"], "query": "Sunday", "recursive": True})
+    results = await call(config, "knowledge_search", {"namespaces": ["Archive/Observatory"], "query": "Monday", "recursive": True})
     assert len(results["results"]) == 1 and results["exhausted"]
     assert results["results"][0]["identifier"] == "Archive/Observatory/Plan.md"
     moved = await call(config, "knowledge_read", {"identifier": "Archive/Observatory/Plan.md"})
@@ -147,7 +157,7 @@ async def run(config, wiki):
         later = await service.search(namespaces=["Late"], query="quasar", cursor=first["next_cursor"])
         assert [row["identifier"] for row in later["results"]] == ["Late/Target.md"], later
         assert later["exhausted"], later
-    return {"status": "passed", "checks": ["multi-note namespaces", "same-title separation", "deterministic mutation receipts", "plain-text receipt fallback", "metadata-only edits", "concurrent writers", "collision refusal", "note and namespace moves", "search by moved path", "bounded shared context", "plain Markdown", "native FTS continuation beyond 250 outside hits"]}
+    return {"status": "passed", "checks": ["multi-note namespaces", "same-title separation", "deterministic mutation receipts", "plain-text receipt fallback", "metadata-only edits", "concurrent writers", "collision refusal", "note and namespace moves", "search by moved path", "bounded shared context", "bounded collection inspection", "plain Markdown", "native FTS continuation beyond 250 outside hits"]}
 
 
 def cleanup(temporary):

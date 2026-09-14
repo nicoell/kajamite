@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import json
 import re
@@ -126,6 +127,70 @@ class NoteOperations:
             raise ValueError("offset must be >= 0 and limit must be >= 1")
         return self._public_note(await self._read_full(identifier), offset, min(limit, 12_000))
 
+    async def inspect_collection(
+        self, namespace: str, recursive: bool = True, cursor: str | None = None,
+        page_size: int = 20,
+    ) -> dict[str, Any]:
+        """Return a live, bounded inventory of ordinary notes in one scope."""
+        scope = self._namespace(namespace)
+        if not isinstance(recursive, bool):
+            raise ValueError("recursive must be a boolean")
+        if not isinstance(page_size, int) or isinstance(page_size, bool) or not 1 <= page_size <= 100:
+            raise ValueError("page_size must be between 1 and 100")
+        fingerprint = hashlib.sha256(json.dumps(
+            [str(getattr(self.backend, "project", "")), scope, recursive, page_size],
+            separators=(",", ":"),
+        ).encode()).hexdigest()
+        search_cursor = self._decode_collection_cursor(cursor, fingerprint) if cursor else None
+        scan = await self._collection_search(scope, recursive, search_cursor, page_size)
+        notes: list[dict[str, Any]] = []
+        omissions = list(scan.get("excluded", []))
+        errors: list[dict[str, str]] = []
+        for item in scan["results"]:
+            identifier = item["identifier"]
+            try:
+                note, omission = await self._inspection_note(identifier)
+            except (BackendError, KnowledgeError) as error:
+                errors.append({"identifier": identifier, "error": str(error)})
+                continue
+            if omission is not None:
+                omissions.append(omission)
+                continue
+            if not str(note.get("file_path", "")).lower().endswith(".md"):
+                omissions.append({"identifier": identifier, "reason": "not_markdown"})
+                continue
+            notes.append({
+                "identifier": self._identifier(note), "file_path": note.get("file_path"),
+                "permalink": note.get("permalink"), "title": note.get("title", ""),
+                "content_sha256": self._content_sha256(note["content"]),
+            })
+        duplicates: dict[str, list[str]] = {}
+        for note in notes:
+            duplicates.setdefault(note["content_sha256"], []).append(note["identifier"])
+        candidates = [
+            {"kind": "exact_duplicate", "scope": "returned_page", "content_sha256": digest,
+             "identifiers": identifiers}
+            for digest, identifiers in duplicates.items() if len(identifiers) > 1
+        ]
+        exhausted = bool(scan["exhausted"])
+        return {
+            "namespace": scope, "recursive": recursive, "notes": notes,
+            "candidates": candidates, "omissions": omissions, "errors": errors,
+            "next_cursor": None if exhausted else self._encode_collection_cursor(scan["next_cursor"], fingerprint),
+            "has_more": not exhausted, "exhausted": exhausted,
+            "scanned_notes": len(scan["results"]), "partial": bool(not exhausted or omissions or errors),
+            "live": True,
+        }
+
+    async def _collection_search(
+        self, scope: str, recursive: bool, cursor: str | None, page_size: int,
+    ) -> dict[str, Any]:
+        return await self.search([scope], query=None, recursive=recursive, cursor=cursor,
+                                 page_size=page_size)
+
+    async def _inspection_note(self, identifier: str) -> tuple[dict[str, Any], dict[str, str] | None]:
+        return await self._read_full(identifier), None
+
     async def create(
         self,
         title: str,
@@ -202,6 +267,72 @@ class NoteOperations:
                 before, after, find_text=find_text, replacement=replacement,
                 metadata_keys=set(metadata or {}),
             )
+            return {
+                "mutation": result, "note": self._public_note(after),
+                "knowledge_change": change, "knowledge_change_text": receipt.render(change),
+            }
+
+    async def revise(
+        self,
+        identifier: str,
+        expected_content_sha256: str,
+        replacements: list[dict[str, str]],
+        preview: bool = False,
+    ) -> dict[str, Any]:
+        """Apply connected exact replacements against one current note body."""
+        if not isinstance(expected_content_sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_content_sha256):
+            raise ValueError("expected_content_sha256 must be a lowercase SHA-256 digest")
+        if not isinstance(replacements, list) or not 1 <= len(replacements) <= 100:
+            raise ValueError("replacements must contain between 1 and 100 entries")
+        if not isinstance(preview, bool):
+            raise ValueError("preview must be a boolean")
+        for item in replacements:
+            if not isinstance(item, dict) or set(item) != {"find_text", "replacement"}:
+                raise ValueError("each replacement must contain only find_text and replacement")
+            if not isinstance(item["find_text"], str) or not item["find_text"]:
+                raise ValueError("replacement find_text must be nonempty text")
+            if not isinstance(item["replacement"], str):
+                raise ValueError("replacement value must be text")
+        async with self.backend.mutation():
+            before = await self._read_full(identifier)
+            await self._check_generic_note(before)
+            body = before["content"]
+            if self._content_sha256(body) != expected_content_sha256:
+                raise KnowledgeError("content revision conflict; read the current complete note before retrying")
+            selections = []
+            for index, item in enumerate(replacements):
+                start = body.find(item["find_text"])
+                if start < 0:
+                    raise KnowledgeError("replacement find_text is missing from the current note body")
+                if body.find(item["find_text"], start + 1) != -1:
+                    raise KnowledgeError("replacement find_text must occur exactly once in the current note body")
+                selections.append((start, start + len(item["find_text"]), index, item))
+            selections.sort()
+            for previous, current in zip(selections, selections[1:]):
+                if current[0] < previous[1]:
+                    raise KnowledgeError("replacement selections overlap in the current note body")
+            parts: list[str] = []
+            position = 0
+            for start, end, _, item in selections:
+                parts.extend((body[position:start], item["replacement"]))
+                position = end
+            parts.append(body[position:])
+            expected = "".join(parts)
+            if preview:
+                return {
+                    "preview": True, "identifier": self._identifier(before),
+                    "expected_content_sha256": expected_content_sha256,
+                    "proposed_content": expected,
+                    "proposed_content_sha256": self._content_sha256(expected),
+                }
+            result = await self._call_mutation("edit_note", {
+                "identifier": self._identifier(before), "operation": "find_replace",
+                "find_text": body, "content": expected, "expected_replacements": 1,
+            })
+            after = await self._read_after_mutation(self._identifier(before))
+            if after["content"] != expected:
+                raise MutationUncertain("revise readback did not match the requested changes; a write may have committed. Inspect current state before retrying.")
+            change = receipt.for_revise(before, after, replacements)
             return {
                 "mutation": result, "note": self._public_note(after),
                 "knowledge_change": change, "knowledge_change_text": receipt.render(change),
@@ -434,10 +565,33 @@ class NoteOperations:
         return {
             "identifier": cls._identifier(note), "title": note.get("title", ""),
             "permalink": note.get("permalink"), "file_path": note.get("file_path"),
-            "content": content[offset:end], "metadata": cls._metadata(note), "offset": offset,
+            "content": content[offset:end], "content_sha256": cls._content_sha256(content),
+            "metadata": cls._metadata(note), "offset": offset,
             "next_offset": end if end < len(content) else None, "truncated": end < len(content),
             "content_is_data": True,
         }
+
+    @staticmethod
+    def _content_sha256(content: str) -> str:
+        return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _encode_collection_cursor(search_cursor: str | None, fingerprint: str) -> str:
+        if not isinstance(search_cursor, str):
+            raise KnowledgeError("collection scan did not return a continuation cursor")
+        raw = json.dumps({"search_cursor": search_cursor, "fingerprint": fingerprint}, separators=(",", ":"))
+        return base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
+
+    @staticmethod
+    def _decode_collection_cursor(cursor: str, fingerprint: str) -> str:
+        try:
+            raw = base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4))
+            value = json.loads(raw)
+            if value["fingerprint"] != fingerprint or not isinstance(value["search_cursor"], str):
+                raise ValueError
+            return value["search_cursor"]
+        except (binascii.Error, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+            raise ValueError("cursor is invalid or belongs to another collection inspection") from error
 
     @staticmethod
     def _identifier(note: dict[str, Any]) -> str:
@@ -539,7 +693,7 @@ class NoteOperations:
             if value["fingerprint"] != fingerprint or not isinstance(offset, int) or offset < 0:
                 raise ValueError
             return offset
-        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+        except (binascii.Error, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
             raise ValueError("cursor is invalid or belongs to another search") from error
 
 
