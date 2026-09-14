@@ -256,3 +256,7 @@ CI backend checks remain enabled. The earlier live-search limitation remains.
 The publication check now requires four octets for private IPv4 addresses.
 Regression tests distinguish dependency versions from all three private ranges;
 the previous expression incorrectly classified npm version 10.9.8 as an address.
+
+The first UI CI job passed. Windows exposed a test expectation that compared
+a temporary-directory alias with its resolved path. The expectation now resolves
+the path, matching the configuration contract; production path handling is unchanged.

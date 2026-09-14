@@ -48,7 +48,7 @@ class ThemeTests(unittest.TestCase):
             path=Path(directory)/'config.toml'
             base='[backend]\ncommand="backend"\nproject="example"\n'
             path.write_text(base+'[ui]\ntheme="theme.css"\n')
-            self.assertEqual(path.parent/'theme.css',Settings.load(path).ui_theme)
+            self.assertEqual((path.parent/'theme.css').resolve(),Settings.load(path).ui_theme)
             for tail in ['[ui]\ntheme=7','[ui]\ntheme=""','[ui]\nunknown="theme.css"']:
                 path.write_text(base+tail)
                 with self.assertRaises(ValueError): Settings.load(path)
