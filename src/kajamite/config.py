@@ -18,6 +18,7 @@ class Settings:
     state_dir: Path | None = None
     telemetry_file: Path | None = None
     semantic_search: bool = False
+    ui_theme: Path | None = None
 
     @classmethod
     def load(cls, path: str | Path):
@@ -51,8 +52,17 @@ class Settings:
                 raise ValueError(f"{name} must be a path string")
             return (config_path.parent / Path(raw).expanduser()).resolve()
 
+        ui = value.get("ui", {})
+        if not isinstance(ui, dict) or set(ui) - {"theme"}:
+            raise ValueError("ui must be a table containing an optional theme path")
+        theme_path = ui.get("theme")
+        if theme_path is not None:
+            if not isinstance(theme_path, str) or not theme_path.strip():
+                raise ValueError("ui.theme must be a nonempty path string")
+            theme_path = (config_path.parent / Path(theme_path).expanduser()).resolve()
+
         return cls(backend["command"], args, backend["project"], project_id, env,
-                   timeout, configured_path("state_dir"), configured_path("telemetry_file"), semantic_search)
+                   timeout, configured_path("state_dir"), configured_path("telemetry_file"), semantic_search, theme_path)
 
     def lock_path(self):
         # One backend-wide lock is adequate for interactive note updates.

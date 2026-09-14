@@ -9,3 +9,5 @@ dist/
 local/
 *.log
 .coverage
+
+web/node_modules/

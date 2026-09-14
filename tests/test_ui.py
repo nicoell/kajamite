@@ -40,13 +40,13 @@ const assert = (value, label) => { if (!value) throw Error(label); };
 const result = async (value, error=false) => {reply({method:'ui/notifications/tool-result',params:{structuredContent:value,isError:error}}); await wait();};
 (async () => {
  await initialization; await result({knowledge_change:CHANGE});
- assert(el('review').hidden && !el('evidence').open, 'details start hidden');
+ assert(el('review').hidden && !el('evidence'), 'details start hidden');
  assert(doc().body.getBoundingClientRect().height < 240, 'compact initial height');
  assert(el('counts').textContent === '1 note · 9 changes', 'notes and passages are distinct');
  el('toggle').click(); await wait();
  assert(requests[0] === 'fullscreen' && !el('review').hidden, 'advertised fullscreen');
  assert(el('changes').children.length === 3, 'bounded first disclosure');
- el('more').click(); assert(el('changes').children.length === 6, 'show more');
+ el('more').click(); await wait(); assert(el('changes').children.length === 6, 'show more');
  reply({method:'ui/notifications/host-context-changed',params:{displayMode:'inline'}}); await wait();
  assert(el('review').hidden, 'host close restores summary');
  for (const mode of ['reject','inline','timeout']) {
@@ -87,6 +87,9 @@ const result = async (value, error=false) => {reply({method:'ui/notifications/to
 '''
         script = 'const CHANGE = ' + json.dumps(change) + '; const UNCHANGED = ' + json.dumps(unchanged) + ';\n' + script
         script += '\nframe.srcdoc = ' + json.dumps(html()) + ';'
+        self.run_browser(script)
+
+    def run_browser(self, script):
         with tempfile.TemporaryDirectory(prefix='kajamite-ui-') as directory:
             page = Path(directory) / 'host.html'
             page.write_text('<!doctype html><meta charset="utf-8"><iframe style="width:640px;height:800px"></iframe>'
@@ -100,3 +103,61 @@ const result = async (value, error=false) => {reply({method:'ui/notifications/to
             self.assertEqual(0, completed.returncode, completed.stderr[-1000:])
             outcome = completed.stdout.split('<pre id="outcome">', 1)[-1].split('</pre>', 1)[0]
             self.assertEqual('BROWSER_ACCEPTANCE_OK', html_module.unescape(outcome))
+
+    def test_themes_apply_without_rebuilding_or_external_requests(self):
+        first = html({'light': {'primary': '#123456', 'radius': '0.5rem'},
+                      'dark': {'primary': '#abcdef'}})
+        second = html({'light': {'primary': '#654321'}})
+        script = 'const PAGES = ' + json.dumps([html(), first, second]) + ';' + r"""
+const frame = document.querySelector('iframe');
+let ready = false, requests = 0;
+const send = data => frame.contentWindow.postMessage({jsonrpc:'2.0', ...data}, '*');
+const wait = (ms=60) => new Promise(resolve => setTimeout(resolve,ms));
+const assert = (value, label) => { if (!value) throw Error(label); };
+const token = name => frame.contentDocument.documentElement.style.getPropertyValue('--'+name);
+const host = context => send({method:'ui/notifications/host-context-changed',params:context});
+window.addEventListener('message', event => {
+ if (event.source !== frame.contentWindow) return;
+ const m = event.data;
+ if (m.method === 'ui/initialize') send({id:m.id,result:{hostContext:{theme:'light',displayMode:'inline',availableDisplayModes:['inline']}}});
+ if (m.method === 'ui/notifications/initialized') {
+   ready = true;
+   send({method:'ui/notifications/tool-result',params:{structuredContent:{preview:true,identifier:'Demo/Note.md',proposed_content:'Synthetic preview'}}});
+ }
+});
+const load = async index => {
+ ready = false; frame.srcdoc = PAGES[index];
+ for (let i=0;i<30 && !ready;i++) await wait();
+ assert(ready, 'initialized '+index); await wait();
+};
+(async()=>{
+ await load(0);
+ const doc = () => frame.contentDocument;
+ const style = node => frame.contentWindow.getComputedStyle(node);
+ host({styles:{variables:{'--color-background-primary':'rgb(240, 241, 242)','--color-text-primary':'rgb(20, 21, 22)','--primary':'#ff0000','--font-sans':'Georgia, serif'}}}); await wait();
+ assert(style(doc().querySelector('[data-slot="card"]')).backgroundColor==='rgb(240, 241, 242)', 'host palette maps to card');
+ assert(token('primary')==='#ff0000', 'host shadcn token');
+ host({styles:{variables:{'--primary':'url(https://example.invalid/track)','--background':'red; color: blue','--not-supported':'red'}}}); await wait();
+ assert(!token('primary') && !token('background') && !token('not-supported'), 'replace clears stale and unsafe tokens');
+ const light = style(doc().body).backgroundColor;
+ host({theme:'dark'});await wait();assert(style(doc().body).backgroundColor!==light, 'host appearance changes default theme');
+ await load(1);
+ assert(token('primary')==='#123456','adopter light theme');
+ host({styles:{variables:{'--primary':'#ff0000'}},theme:'dark'});await wait();
+ assert(token('primary')==='#abcdef','adopter dark overrides host');
+ assert(token('radius')==='0.5rem','shared geometry retained');
+ host({theme:'light'});await wait();assert(token('primary')==='#123456','return to light');
+ doc().getElementById('toggle').click();await wait();
+ const evidence=doc().getElementById('evidence-toggle');evidence.focus();evidence.click();await wait();
+ assert(doc().getElementById('raw').textContent.includes('Synthetic preview'),'accessible evidence disclosure');
+ send({method:'ui/notifications/tool-result',params:{structuredContent:{}}});await wait();
+ doc().getElementById('toggle').click();await wait();
+ assert(!doc().getElementById('raw'),'new result closes technical evidence');
+ frame.style.width='320px';await wait();assert(doc().documentElement.scrollWidth<=320,'themed narrow layout');
+ await load(2);assert(token('primary')==='#654321','second adopter same compiled bundle');
+ assert(!doc().querySelector('script[src], link[href], img, iframe'),'no external assets');
+ assert(frame.contentWindow.performance.getEntriesByType('resource').length===0,'no resource requests');
+ document.getElementById('outcome').textContent='BROWSER_ACCEPTANCE_OK';
+})().catch(error=>document.getElementById('outcome').textContent='FAILED: '+error.message);
+"""
+        self.run_browser(script)

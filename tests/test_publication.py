@@ -18,6 +18,12 @@ class PublicationTests(unittest.TestCase):
         self.assertEqual(publication.reasons(b'SYNTHETICPRIVATE_core', {fingerprint}), ['private identifier'])
         self.assertEqual(publication.reasons(b'normal public example', {fingerprint}), [])
 
+    def test_dependency_versions_are_not_private_network_addresses(self):
+        self.assertEqual(publication.reasons(b'npm@10.9.8'), [])
+        for octets in [(10, 1, 2, 3), (192, 168, 1, 2), (172, 16, 1, 2), (172, 31, 1, 2)]:
+            data = '.'.join(map(str, octets)).encode()
+            self.assertEqual(publication.reasons(data), ['private network address'])
+
     def test_values_are_not_returned(self):
         data = b'ghp_' + b'A' * 30
         self.assertEqual(publication.reasons(data), ['credential token'])
