@@ -63,10 +63,17 @@ snapshot during concurrent changes.
 
 When reported native totals change within a scan or its cursor continuation,
 `index_changed=true` withholds `complete_scope_search` and marks engine search
-and collection inspection partial. Exhaustion still describes the end of the
-native stream; it does not establish absence from a changing index. Equal or
+and collection inspection partial. Exhaustion does not establish absence from
+a changing index. Equal or
 missing totals cannot prove stability. Legacy cursors have no earlier total to
-compare. The signal does not trigger retries or expand the scan budget.
+compare. A changed total invalidates the offset. At the end of traversal,
+`next_cursor` starts one recovery pass at the first native page, and `exhausted=false` keeps
+traversal open. The cursor preserves this recovery requirement between calls.
+Deferred recovery lets later pages progress during index changes. Callers follow it
+explicitly within the unchanged per-call scan budget. Earlier matches can repeat;
+deduplicate accumulated identities. The changed-index warning remains set after
+recovery, so exhaustion does not certify a snapshot. Further changes during
+recovery retain that warning without another recovery pass.
 
 ## Context and mutations
 

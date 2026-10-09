@@ -85,7 +85,7 @@ class NoteOperations:
         fingerprint = hashlib.sha256(
             json.dumps(criteria, sort_keys=True, separators=(",", ":")).encode()
         ).hexdigest()
-        offset, native_total, index_changed = self._decode_cursor(cursor, fingerprint) if cursor else (0, None, False)
+        offset, native_total, index_changed, restart, recovering = self._decode_cursor(cursor, fingerprint) if cursor else (0, None, False, False, False)
         native_page, skip = divmod(offset, self._native_page_size)
         native_page += 1
         results: list[dict[str, Any]] = []
@@ -113,7 +113,8 @@ class NoteOperations:
                 raise KnowledgeError("search_notes returned invalid results")
             total = payload.get("total")
             if type(total) is int and total >= 0:
-                index_changed = index_changed or (native_total is not None and total != native_total)
+                restart = restart or (native_total is not None and total != native_total)
+                index_changed = index_changed or restart
                 native_total = total
             pages += 1
             stopped = False
@@ -146,9 +147,12 @@ class NoteOperations:
             skip = 0
 
         scan_limited = pages == self._native_page_budget and not exhausted
+        if restart and exhausted and not recovering:
+            # One recovery pass preserves forward progress while keeping index uncertainty visible.
+            offset, exhausted, restart, recovering = 0, False, False, True
         return {
             "results": results,
-            "next_cursor": None if exhausted else self._encode_cursor(offset, fingerprint, native_total, index_changed),
+            "next_cursor": None if exhausted else self._encode_cursor(offset, fingerprint, native_total, index_changed, restart, recovering),
             "has_more": not exhausted,
             "exhausted": exhausted,
             "retrieval_mode": retrieval_mode,
@@ -707,13 +711,14 @@ class NoteOperations:
         return False
 
     @staticmethod
-    def _encode_cursor(offset: int, fingerprint: str, native_total: int | None = None, index_changed: bool = False) -> str:
+    def _encode_cursor(offset: int, fingerprint: str, native_total: int | None = None, index_changed: bool = False, restart: bool = False, recovering: bool = False) -> str:
         raw = json.dumps({"offset": offset, "fingerprint": fingerprint,
-                          "native_total": native_total, "index_changed": index_changed}, separators=(",", ":"))
+                          "native_total": native_total, "index_changed": index_changed,
+                          "restart": restart, "recovering": recovering}, separators=(",", ":"))
         return base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
 
     @staticmethod
-    def _decode_cursor(cursor: str, fingerprint: str) -> tuple[int, int | None, bool]:
+    def _decode_cursor(cursor: str, fingerprint: str) -> tuple[int, int | None, bool, bool, bool]:
         try:
             raw = base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4))
             value = json.loads(raw)
@@ -722,9 +727,11 @@ class NoteOperations:
                 raise ValueError
             total = value.get("native_total")
             changed = value.get("index_changed", False)
-            if total is not None and (type(total) is not int or total < 0) or type(changed) is not bool:
+            restart = value.get("restart", False)
+            recovering = value.get("recovering", False)
+            if total is not None and (type(total) is not int or total < 0) or any(type(flag) is not bool for flag in (changed, restart, recovering)):
                 raise ValueError
-            return offset, total, changed
+            return offset, total, changed, restart, recovering
         except (binascii.Error, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
             raise ValueError("cursor is invalid or belongs to another search") from error
 

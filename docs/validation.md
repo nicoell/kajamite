@@ -1,5 +1,29 @@
 # Validation
 
+## Search continuation after native index changes
+
+Changed native totals invalidate ranked offsets. At the end of traversal, the
+returned cursor restarts at the first page, with the same query, scope, and
+per-call page budget. The cursor preserves recovery between calls. A separate
+oscillating-total control checks that later pages progress before recovery.
+Recovery runs once; further changes remain partial without endless rescans.
+The changed-index warning remains set. Repeated identities require caller
+deduplication, and exhaustion does not establish a stable snapshot.
+
+The regression removes an earlier row after the first 250 results. The target
+then moves before the saved offset. The 0.8.0 baseline ends with no target;
+the corrected continuation returns it. Existing changed-total, legacy-cursor,
+filter-binding, and bounded-scan checks remain intact.
+
+On Windows Python 3.12, the source suite runs 124 tests: 118 pass and six skip.
+All five browser checks pass separately. The UI source and shipped bundle are
+unchanged. Native indexing duplicates and equal-total changes remain backend
+limitations; this correction does not repair the backend index.
+
+A native deletion control moves the target before the saved offset. Windows
+and Linux Python 3.12 both recover it in two continuations. Both traversals
+finish with `partial=true` and `complete_scope_search=false`.
+
 ## Search and collection descriptions
 
 Tool descriptions distinguish native-stream exhaustion from a complete inventory.
